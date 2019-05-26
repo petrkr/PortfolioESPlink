@@ -127,7 +127,7 @@ void sendByte(unsigned char data)
   int i;
   unsigned char b;
 
-  usleep(50);
+  usleep(250);
   for (i = 0; i < 4; i++) {
     b = ((data & 0x80) >> 7) | 2;     /* Output data bit */
     writePort(b);
