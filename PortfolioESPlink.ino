@@ -20,6 +20,23 @@
 #define inClockPIN  21 // LPT Paper Error (pin 12, byte S5)
 #define inDataPIN   19 // LPT Select      (pin 13, byte S4)
 
+#define DBG_OUTPUT_PORT Serial
+
+#ifdef ESP32
+#include <WiFi.h>
+#include <WebServer.h>
+
+WebServer server(80);
+#endif
+
+#include <SPIFFS.h>
+File fsUploadFile;
+
+#define FILESYSTEM SPIFFS
+
+const char* ssid = "";
+const char* password = "";
+const char* host = "portfolioesplink";
 
 typedef enum {
   VERB_QUIET = 0,
@@ -55,6 +72,106 @@ unsigned char receiveInit[82] =
 
 const unsigned char receiveFinish[3] = { 0x20, 0x00, 0x03 };
 
+// WEB server functions
+
+String getContentType(String filename) {
+  if (server.hasArg("download")) {
+    return "application/octet-stream";
+  } else if (filename.endsWith(".xml")) {
+    return "text/xml";
+  } else if (filename.endsWith(".exe")) {
+    return "application/x-msdownload";
+  } else if (filename.endsWith(".txt")) {
+    return "text/plain";
+  } else if (filename.endsWith(".zip")) {
+    return "application/x-zip";
+  } else if (filename.endsWith(".gz")) {
+    return "application/x-gzip";
+  }
+  return "application/octet-stream";
+}
+
+
+void handleFileUpload() {
+  int val, len, blocksize;
+
+  HTTPUpload& upload = server.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    String filename = upload.filename;
+    if (!filename.startsWith("/")) {
+      filename = "/" + filename;
+    }
+
+    DBG_OUTPUT_PORT.print("handleFileUpload Name: "); DBG_OUTPUT_PORT.println(filename);
+    fsUploadFile = FILESYSTEM.open(filename, "w");
+    filename = String();
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    DBG_OUTPUT_PORT.print("handleFileUpload Data: "); DBG_OUTPUT_PORT.println(upload.currentSize);
+    if (fsUploadFile) {
+      fsUploadFile.write(upload.buf, upload.currentSize);
+    }
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (fsUploadFile) {
+      String filename = fsUploadFile.name();
+      fsUploadFile.close();
+
+      // Transmit file to Atari
+      fsUploadFile = FILESYSTEM.open(filename, "r");
+
+      if(!transmitFile(&fsUploadFile, String("C:\\" + upload.filename).c_str())) {
+        DBG_OUTPUT_PORT.println("Upload file to Atari failed");
+      }
+    }
+    DBG_OUTPUT_PORT.print("handleFileUpload Size: "); DBG_OUTPUT_PORT.println(upload.totalSize);
+  }
+
+}
+
+void handleFileList() {
+  if (!server.hasArg("dir")) {
+    server.send(500, "text/plain", "BAD ARGS");
+    return;
+  }
+
+  int i, num;
+  char *name;
+
+  String path = server.arg("dir");
+  DBG_OUTPUT_PORT.println("handleFileList: " + path);
+  DBG_OUTPUT_PORT.printf("Fetching directory listing for %s\n", path.c_str());
+
+  strncpy((char*)receiveInit + 3, path.c_str(), MAX_FILENAME_LEN);
+  sendBlock(receiveInit, sizeof(receiveInit), VERB_ERRORS);
+  receiveBlock(payload, PAYLOAD_BUFSIZE, VERB_ERRORS);
+
+  num = payload[0] + (payload[1] << 8);
+
+  if (num == 0) {
+    DBG_OUTPUT_PORT.printf("No files.\n");
+    server.send(500, "text/plain", "No files");
+    return;
+  }
+
+  name = (char*)payload + 2;
+
+  String output = "[";
+
+  for (i = 0; i < num; i++) {
+    DBG_OUTPUT_PORT.printf("%s\n", name);
+    if (output != "[") {
+      output += ',';
+    }
+    output += "{\"name\":\"";
+    output += name;
+    output += "\"}";
+
+    name += strlen(name) + 1;
+  }
+
+  output += "]";
+  server.send(200, "text/json", output);
+}
+
 /*
   Prepare ESP Pins
 */
@@ -78,14 +195,14 @@ static inline void writePort(const unsigned char data) {
 static inline void waitClockHigh(void)
 {
   while (!digitalRead(inClockPIN)) {
-    delay(1); // TODO: Do not block read?
+    //delay(1); // TODO: Do not block read?
   }
 }
 
 static inline void waitClockLow(void)
 {
   while (digitalRead(inClockPIN)) {
-    delay(1); // TODO: Do not block read?
+    //delay(1); // TODO: Do not block read?
   }
 }
 
@@ -164,12 +281,12 @@ void sendBlock(const unsigned char *pData, const unsigned int len, const VERBOSI
 
     if (recv == 'Z') {
       if (verbosity >= VERB_FLOWCONTROL) {
-        Serial.printf("Portfolio ready for receiving.\n");
+        DBG_OUTPUT_PORT.printf("Portfolio ready for receiving.\n");
       }
     }
     else {
       if (verbosity >= VERB_ERRORS) {
-        Serial.printf( "Portfolio not ready!\n");
+        DBG_OUTPUT_PORT.printf( "Portfolio not ready!\n");
         exit(EXIT_FAILURE);
       }
     }
@@ -187,23 +304,23 @@ void sendBlock(const unsigned char *pData, const unsigned int len, const VERBOSI
       sendByte(recv); checksum -= recv;
 
       if (verbosity >= VERB_COUNTER)
-        Serial.printf("Sent %d of %d bytes.\r", i + 1, len);
+        DBG_OUTPUT_PORT.printf("Sent %d of %d bytes.\r", i + 1, len);
     }
     sendByte(checksum);
 
     if (verbosity >= VERB_COUNTER)
-      Serial.printf("\n");
+      DBG_OUTPUT_PORT.printf("\n");
 
     recv = receiveByte();
 
     if (recv == checksum) {
       if (verbosity >= VERB_FLOWCONTROL) {
-        Serial.printf( "checksum OK\n");
+        DBG_OUTPUT_PORT.printf( "checksum OK\n");
       }
     }
     else {
       if (verbosity >= VERB_ERRORS) {
-        Serial.printf( "checksum ERR: %d\n", recv);
+        DBG_OUTPUT_PORT.printf( "checksum ERR: %d\n", recv);
         exit(EXIT_FAILURE);
       }
     }
@@ -228,12 +345,12 @@ int receiveBlock(unsigned char *pData, const int maxLen, const VERBOSITY verbosi
 
   if (recv == 0x0a5) {
     if (verbosity >= VERB_FLOWCONTROL) {
-      Serial.printf( "Acknowledge OK\n");
+      DBG_OUTPUT_PORT.printf( "Acknowledge OK\n");
     }
   }
   else {
     if (verbosity >= VERB_ERRORS) {
-      Serial.printf( "Acknowledge ERROR (received %2X instead of A5)\n", recv);
+      DBG_OUTPUT_PORT.printf( "Acknowledge ERROR (received %2X instead of A5)\n", recv);
       exit(EXIT_FAILURE);
     }
   }
@@ -244,7 +361,7 @@ int receiveBlock(unsigned char *pData, const int maxLen, const VERBOSITY verbosi
 
   if (len > maxLen) {
     if (verbosity >= VERB_ERRORS) {
-      Serial.printf( "Receive buffer too small (%d instead of %d bytes).\n", maxLen, len);
+      DBG_OUTPUT_PORT.printf( "Receive buffer too small (%d instead of %d bytes).\n", maxLen, len);
     }
     return 0;
   }
@@ -255,22 +372,22 @@ int receiveBlock(unsigned char *pData, const int maxLen, const VERBOSITY verbosi
     pData[i] = recv;
 
     if (verbosity >= VERB_COUNTER)
-      Serial.printf(".");
+      DBG_OUTPUT_PORT.printf(".");
   }
 
   if (verbosity >= VERB_COUNTER)
-    Serial.printf("\n");
+    DBG_OUTPUT_PORT.printf("\n");
 
   recv = receiveByte();
 
   if ((unsigned char)(256 - recv) == checksum) {
     if (verbosity >= VERB_FLOWCONTROL) {
-      Serial.printf( "checksum OK\n");
+      DBG_OUTPUT_PORT.printf( "checksum OK\n");
     }
   }
   else {
     if (verbosity >= VERB_ERRORS) {
-      Serial.printf( "checksum ERR %d %d\n", (unsigned char)(256 - recv), checksum);
+      DBG_OUTPUT_PORT.printf( "checksum ERR %d %d\n", (unsigned char)(256 - recv), checksum);
       exit(EXIT_FAILURE);
     }
   }
@@ -286,34 +403,25 @@ int receiveBlock(unsigned char *pData, const int maxLen, const VERBOSITY verbosi
   Read source file and transmit it to the Portfolio (/t)
   TODO: ESP Link handle
 */
-void transmitFile(const char * source, const char * dest) {
-  FILE * file = fopen(source, "rb");
+bool transmitFile(File *file, const char * dest) {
   int val, len, blocksize;
 
   if (file == NULL) {
-    Serial.printf("File not found: %s\n", source);
-    exit(EXIT_FAILURE);
+    DBG_OUTPUT_PORT.printf("File not found: %s\n", file->name());
+    return false;
   }
 
   /*
     Dateigroesse ermitteln
   */
-  val = fseek(file, 0, SEEK_END);
-  if (val != 0) {
-    Serial.printf("Seek error!\n");
-    exit(EXIT_FAILURE);
-  }
-  len = ftell(file);
+  len = file->size();
+  DBG_OUTPUT_PORT.printf("File length: %d\n", len);
   if (len == -1 || len > 32 * 1024 * 1024) {
     /* Directories and huge files (>32 MB) are skipped */
-    Serial.printf("Skipping %s.\n", source);
-    return;
+    DBG_OUTPUT_PORT.printf("Skipping %s.\n", file->name());
+    return false;
   }
-  val = fseek(file, 0, SEEK_SET);
-  if (val != 0) {
-    Serial.printf("Seek error!\n");
-    exit(EXIT_FAILURE);
-  }
+  file->seek(0, SeekSet);
 
   transmitInit[7] = len & 255;
   transmitInit[8] = (len >> 8) & 255;
@@ -325,49 +433,49 @@ void transmitFile(const char * source, const char * dest) {
   receiveBlock(controlData, CONTROL_BUFSIZE, VERB_ERRORS);
 
   if (controlData[0] == 0x10) {
-    Serial.printf("Invalid destination file!\n");
-    exit(EXIT_FAILURE);
+    DBG_OUTPUT_PORT.printf("Invalid destination file!\n");
+    return false;
   }
 
   if (controlData[0] == 0x20) {
-    Serial.printf("File exists on Portfolio");
+    DBG_OUTPUT_PORT.printf("File exists on Portfolio");
     if (force) {
-      Serial.printf(" and is being overwritten.\n");
+      DBG_OUTPUT_PORT.printf(" and is being overwritten.\n");
       sendBlock(transmitOverwrite, sizeof(transmitOverwrite), VERB_ERRORS);
     }
     else {
-      Serial.printf("! Use -f to force overwriting.\n");
+      DBG_OUTPUT_PORT.printf("! Use -f to force overwriting.\n");
       sendBlock(transmitCancel, sizeof(transmitCancel), VERB_ERRORS);
-      return; /* proceed to next file */
+      return false; /* proceed to next file */
     }
   }
 
   blocksize = controlData[1] + (controlData[2] << 8);
   if (blocksize > PAYLOAD_BUFSIZE) {
-    Serial.printf("Payload buffer too small!\n");
-    exit(EXIT_FAILURE);
+    DBG_OUTPUT_PORT.printf("Payload buffer too small!\n");
+    return false;
   }
 
   if (len > blocksize) {
-    Serial.printf("Transmission consists of %d blocks of payload.\n", (len + blocksize - 1) / blocksize);
+    DBG_OUTPUT_PORT.printf("Transmission consists of %d blocks of payload.\n", (len + blocksize - 1) / blocksize);
   }
   while (len > blocksize) {
-    fread(payload, sizeof(char), blocksize, file);
+    file->readBytes((char*)payload, sizeof(char) * blocksize);
     sendBlock(payload, blocksize, VERB_COUNTER);
     len -= blocksize;
   }
 
-  fread(payload, sizeof(char), len, file);
+  file->readBytes((char*)payload, sizeof(char) * len);
   if (len)
     sendBlock(payload, len, VERB_COUNTER);
   receiveBlock(controlData, CONTROL_BUFSIZE, VERB_ERRORS);
 
-  fclose(file);
-
   if (controlData[0] != 0x20) {
-    Serial.printf("Transmission failed!\nPossilby disk full on Portfolio or directory does not exist.\n");
-    exit(EXIT_FAILURE);
+    DBG_OUTPUT_PORT.printf("Transmission failed!\nPossilby disk full on Portfolio or directory does not exist.\n");
+    return false;
   }
+
+  return true;
 }
 
 
@@ -379,7 +487,6 @@ void catFile(const char * source) {
   int i, num, len, total;
   int blocksize = 0x7000;   /* TODO: Check if this is always the same */
   char startdir[256];
-  char *namebase;
   char *basename;
   char *pos;
 
@@ -392,19 +499,8 @@ void catFile(const char * source) {
   num = list[0] + (list[1] << 8);
 
   if (num == 0) {
-    Serial.printf("File not found on Portfolio: %s\n", source);
+    DBG_OUTPUT_PORT.printf("File not found on Portfolio: %s\n", source);
     exit(EXIT_FAILURE);
-  }
-
-  /* Set up pointer to behind the path where basename shall be appended */
-  namebase = (char*)receiveInit + 3;
-  pos = strrchr(namebase, ':');
-  if (pos) {
-    namebase = pos + 1;
-  }
-  pos = strrchr(namebase, '\\');
-  if (pos) {
-    namebase = pos + 1;
   }
 
   basename = (char*)list + 2;
@@ -412,38 +508,37 @@ void catFile(const char * source) {
   /* Transfer each file from the list */
   for (i = 1; i <= num; i++) {
 
-    Serial.printf("Transferring file %d", nReceivedFiles + i);
+    DBG_OUTPUT_PORT.printf("Transferring file %d", nReceivedFiles + i);
     if (sourcecount == 1) {
       /* We know the total number of files only if a single source item
         has been specified (potentially using wildcards). */
-      Serial.printf(" of %d", num);
+      DBG_OUTPUT_PORT.printf(" of %d", num);
     }
-    Serial.printf(": %s\n", basename);
+    DBG_OUTPUT_PORT.printf(": %s\n", basename);
 
     /* Request Portfolio to send file */
     receiveInit[0] = 2;
-    strncpy(namebase, basename, MAX_FILENAME_LEN);
     sendBlock(receiveInit, sizeof(receiveInit), VERB_ERRORS);
 
     /* Get file length information */
     receiveBlock(controlData, CONTROL_BUFSIZE, VERB_ERRORS);
 
     if (controlData[0] != 0x20) {
-      Serial.printf("Unknown protocol error! \n");
+      DBG_OUTPUT_PORT.printf("Unknown protocol error! \n");
       exit(EXIT_FAILURE);
     }
 
     total = controlData[7] + ((int)controlData[8] << 8) + ((int)controlData[9] << 16);
 
     if (total > blocksize) {
-      Serial.printf("Transmission consists of %d blocks of payload.\n", (total + blocksize - 1) / blocksize);
+      DBG_OUTPUT_PORT.printf("Transmission consists of %d blocks of payload.\n", (total + blocksize - 1) / blocksize);
     }
 
     /* Receive and save actual payload */
     while (total > 0) {
       len = receiveBlock(payload, PAYLOAD_BUFSIZE, VERB_COUNTER);
       for (int i = 0; i < len; i++) {
-        Serial.write(payload[i]);
+        DBG_OUTPUT_PORT.write(payload[i]);
       }
       total -= len;
     }
@@ -474,7 +569,7 @@ void receiveFile(const char * source, const char * dest) {
 
   /* Check if the destination parameter specifies a directory */
   if (!getcwd(startdir, sizeof(startdir))) {
-    Serial.printf("Unexpected error: getcwd(%s) failed!\n", dest);
+    DBG_OUTPUT_PORT.printf("Unexpected error: getcwd(%s) failed!\n", dest);
     exit(EXIT_FAILURE);
   }
   if (chdir(dest) == 0) {
@@ -490,7 +585,7 @@ void receiveFile(const char * source, const char * dest) {
   num = list[0] + (list[1] << 8);
 
   if (num == 0) {
-    Serial.printf("File not found on Portfolio: %s\n", source);
+    DBG_OUTPUT_PORT.printf("File not found on Portfolio: %s\n", source);
     exit(EXIT_FAILURE);
   }
 
@@ -510,13 +605,13 @@ void receiveFile(const char * source, const char * dest) {
   /* Transfer each file from the list */
   for (i = 1; i <= num; i++) {
 
-    Serial.printf("Transferring file %d", nReceivedFiles + i);
+    DBG_OUTPUT_PORT.printf("Transferring file %d", nReceivedFiles + i);
     if (sourcecount == 1) {
       /* We know the total number of files only if a single source item
         has been specified (potentially using wildcards). */
-      Serial.printf(" of %d", num);
+      DBG_OUTPUT_PORT.printf(" of %d", num);
     }
-    Serial.printf(": %s\n", basename);
+    DBG_OUTPUT_PORT.printf(": %s\n", basename);
 
     if (destIsDir)
       dest = basename;
@@ -526,9 +621,9 @@ void receiveFile(const char * source, const char * dest) {
     if (file != NULL) {
       fclose(file);
       if (!force) {
-        Serial.printf("File exists! Use -f to force overwriting.\n");
+        DBG_OUTPUT_PORT.printf("File exists! Use -f to force overwriting.\n");
         if (i < num)
-          Serial.printf("Remaining files are not copied!\n");
+          DBG_OUTPUT_PORT.printf("Remaining files are not copied!\n");
         exit(EXIT_FAILURE);
       }
     }
@@ -536,7 +631,7 @@ void receiveFile(const char * source, const char * dest) {
     /* Open destination file */
     file = fopen(dest, "wb");
     if (file == NULL) {
-      Serial.printf("Cannot create file: %s\n", dest);
+      DBG_OUTPUT_PORT.printf("Cannot create file: %s\n", dest);
       exit(EXIT_FAILURE);
     }
 
@@ -549,14 +644,14 @@ void receiveFile(const char * source, const char * dest) {
     receiveBlock(controlData, CONTROL_BUFSIZE, VERB_ERRORS);
 
     if (controlData[0] != 0x20) {
-      Serial.printf("Unknown protocol error! \n");
+      DBG_OUTPUT_PORT.printf("Unknown protocol error! \n");
       exit(EXIT_FAILURE);
     }
 
     total = controlData[7] + ((int)controlData[8] << 8) + ((int)controlData[9] << 16);
 
     if (total > blocksize) {
-      Serial.printf("Transmission consists of %d blocks of payload.\n", (total + blocksize - 1) / blocksize);
+      DBG_OUTPUT_PORT.printf("Transmission consists of %d blocks of payload.\n", (total + blocksize - 1) / blocksize);
     }
 
     /* Receive and save actual payload */
@@ -576,7 +671,7 @@ void receiveFile(const char * source, const char * dest) {
   /* Change back to original directory */
   if (destIsDir) {
     if (chdir(startdir) != 0) {
-      Serial.printf("Unexpected error: chdir(%s) failed!\n", startdir);
+      DBG_OUTPUT_PORT.printf("Unexpected error: chdir(%s) failed!\n", startdir);
       exit(EXIT_FAILURE);
     }
   }
@@ -592,7 +687,7 @@ void listFiles(const char * pattern) {
   int i, num;
   char *name;
 
-  Serial.printf("Fetching directory listing for %s\n", pattern);
+  DBG_OUTPUT_PORT.printf("Fetching directory listing for %s\n", pattern);
 
   strncpy((char*)receiveInit + 3, pattern, MAX_FILENAME_LEN);
   sendBlock(receiveInit, sizeof(receiveInit), VERB_ERRORS);
@@ -600,12 +695,12 @@ void listFiles(const char * pattern) {
 
   num = payload[0] + (payload[1] << 8);
   if (num == 0)
-    Serial.printf("No files.\n");
+    DBG_OUTPUT_PORT.printf("No files.\n");
 
   name = (char*)payload + 2;
 
   for (i = 0; i < num; i++) {
-    Serial.printf("%s\n", name);
+    DBG_OUTPUT_PORT.printf("%s\n", name);
     name += strlen(name) + 1;
   }
 }
@@ -677,12 +772,24 @@ void composePofoName(char *source, char * dest, char *pofoName, int sourcecount)
   }
 }
 
+String formatBytes(size_t bytes) {
+  if (bytes < 1024) {
+    return String(bytes) + "B";
+  } else if (bytes < (1024 * 1024)) {
+    return String(bytes / 1024.0) + "KB";
+  } else if (bytes < (1024 * 1024 * 1024)) {
+    return String(bytes / 1024.0 / 1024.0) + "MB";
+  } else {
+    return String(bytes / 1024.0 / 1024.0 / 1024.0) + "GB";
+  }
+}
+
 
 void setup()
 {
-  Serial.begin(115200);
-  Serial.printf("PortfolioESPLink 0.1 - (c) 2019 by Petr Kracik\n");
-  Serial.printf("based on Transfolio 1.0.1 - (c) 2018 by Klaus Peichl\n");
+  DBG_OUTPUT_PORT.begin(115200);
+  DBG_OUTPUT_PORT.printf("PortfolioESPLink 0.1 - (c) 2019 by Petr Kracik\n");
+  DBG_OUTPUT_PORT.printf("based on Transfolio 1.0.1 - (c) 2018 by Klaus Peichl\n");
 
   /*
     Memory allocation
@@ -693,39 +800,82 @@ void setup()
   list = (unsigned char *)malloc(LIST_BUFSIZE);
 
   if (payload == NULL || controlData == NULL || list == NULL) {
-    Serial.printf( "Out of memory!\n");
+    DBG_OUTPUT_PORT.printf( "Out of memory!\n");
     exit(EXIT_FAILURE);
   }
 
-
   setupPort();
 
-  /*
-    Wait for Portfolio to enter server mode
-  */
-  Serial.println("Waiting for Portfolio...");
-  //writePort(2);
-  //waitClockHigh();
+  FILESYSTEM.begin();
+  {
+      File root = FILESYSTEM.open("/");
+      File file = root.openNextFile();
+      while(file){
+          String fileName = file.name();
+          size_t fileSize = file.size();
+          DBG_OUTPUT_PORT.printf("FS File: %s, size: %s\n", fileName.c_str(), formatBytes(fileSize).c_str());
+          file = root.openNextFile();
+      }
+      DBG_OUTPUT_PORT.printf("\n");
+  }
 
-  byte recv = receiveByte();
+  // Setup WiFi
 
-  /* synchronization */
-  while (recv != 90) {
-    waitClockLow();
-    writePort(0);
-    waitClockHigh();
-    writePort(2);
-    recv = receiveByte();
+  DBG_OUTPUT_PORT.printf("Connecting to %s\n", ssid);
+  if (String(WiFi.SSID()) != String(ssid)) {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
   }
 
 
-  listFiles("A:\\*.*");
-  listFiles("C:\\*.*");
-  catFile("A:\\ATARI.BAT");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    DBG_OUTPUT_PORT.print(".");
+  }
+
+  DBG_OUTPUT_PORT.println("");
+  DBG_OUTPUT_PORT.print("Connected! IP address: ");
+  DBG_OUTPUT_PORT.println(WiFi.localIP());
+
+  server.on("/upload", HTTP_POST, []() {
+    server.send(200, "text/plain", "");
+  }, handleFileUpload);
+
+  server.on("/list", HTTP_GET, handleFileList);
+
+  // Setup HTTP Server
+  server.begin();
+
 
 }
 
+void syncTick() {
+  waitClockLow();
+  writePort(0);
+  waitClockHigh();
+  writePort(2);
+}
 
+bool detectPortfolio() {
+  byte recv;
+
+  syncTick();
+  recv = receiveByte();
+
+  return recv == 90;
+}
+
+bool portfolioConnected = false;
 void loop() {
+
+  server.handleClient();
+
+  DBG_OUTPUT_PORT.print("Waiting for connection");
+  while (!detectPortfolio()) {
+    delay(1);
+  }
+
+  DBG_OUTPUT_PORT.println("... Connected");
+
   delay(1);
 }
