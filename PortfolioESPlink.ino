@@ -7,6 +7,19 @@
 
 */
 
+/*
+USAGE:
+List directory:
+  GET http://IP/list?dir=A:\*.*
+    param dir=PATH/FILTER
+
+  POST http://IP/upload
+    param file
+
+  curl -X POST -F "file=@fileondrive" http://IP/upload
+
+*/
+
 #define PAYLOAD_BUFSIZE   60000
 #define CONTROL_BUFSIZE     100
 #define LIST_BUFSIZE       2000
@@ -148,7 +161,7 @@ void handleFileList() {
 
   if (num == 0) {
     DBG_OUTPUT_PORT.printf("No files.\n");
-    server.send(500, "text/plain", "No files");
+    server.send(200, "text/plain", "No files");
     return;
   }
 
