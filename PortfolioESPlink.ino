@@ -3,7 +3,8 @@
   pocket computer over wifi. It communicates with the built-in file transfer software of the Portfolio.
 
   Version history:
-  0.1  First release, only list folder and cat(type) files to Serial, protocol based on Transfolio v1.0.1 (2019-05-26)
+  0.1 First release, only list folder and cat(type) files to Serial, protocol based on Transfolio v1.0.1 (2019-05-26)
+  0.2 Format SPIFF if it does not work, fix setupPort
 
 */
 
@@ -188,7 +189,7 @@ void handleFileList() {
 /*
   Prepare ESP Pins
 */
-int setupPort() {
+void setupPort() {
   pinMode(outDataPIN, OUTPUT);
   pinMode(outClockPIN, OUTPUT);
 
@@ -801,13 +802,16 @@ String formatBytes(size_t bytes) {
 void setup()
 {
   DBG_OUTPUT_PORT.begin(115200);
-  DBG_OUTPUT_PORT.printf("PortfolioESPLink 0.1 - (c) 2019 by Petr Kracik\n");
+  delay(250);
+
+  DBG_OUTPUT_PORT.printf("PortfolioESPLink 0.2 - (c) 2023 by Petr Kracik\n");
   DBG_OUTPUT_PORT.printf("based on Transfolio 1.0.1 - (c) 2018 by Klaus Peichl\n");
 
   /*
     Memory allocation
   */
 
+  DBG_OUTPUT_PORT.println("Allocating mempory");
   payload = (unsigned char *)malloc(PAYLOAD_BUFSIZE);
   controlData = (unsigned char *)malloc(CONTROL_BUFSIZE);
   list = (unsigned char *)malloc(LIST_BUFSIZE);
@@ -817,24 +821,29 @@ void setup()
     exit(EXIT_FAILURE);
   }
 
+  DBG_OUTPUT_PORT.println("Setting up port");
   setupPort();
 
-  FILESYSTEM.begin();
-  {
-      File root = FILESYSTEM.open("/");
-      File file = root.openNextFile();
-      while(file){
-          String fileName = file.name();
-          size_t fileSize = file.size();
-          DBG_OUTPUT_PORT.printf("FS File: %s, size: %s\n", fileName.c_str(), formatBytes(fileSize).c_str());
-          file = root.openNextFile();
-      }
-      DBG_OUTPUT_PORT.printf("\n");
+  DBG_OUTPUT_PORT.println("Opening filesystem");
+  if (!FILESYSTEM.begin()) {
+    DBG_OUTPUT_PORT.println("Corrupted or empty filesystem, formatting");
+    FILESYSTEM.format();
+    FILESYSTEM.begin();
+  }
+
+  File root = FILESYSTEM.open("/");
+  File file = root.openNextFile();
+  while (file) {
+    String fileName = file.name();
+    size_t fileSize = file.size();
+    DBG_OUTPUT_PORT.printf("FS File: %s, size: %s\n", fileName.c_str(), formatBytes(fileSize).c_str());
+    file = root.openNextFile();
   }
 
   // Setup WiFi
 
-  DBG_OUTPUT_PORT.printf("Connecting to %s\n", ssid);
+  DBG_OUTPUT_PORT.print("Connecting to ");
+  DBG_OUTPUT_PORT.println(ssid);
   if (String(WiFi.SSID()) != String(ssid)) {
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
