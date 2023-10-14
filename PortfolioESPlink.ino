@@ -9,8 +9,8 @@
 */
 
 /*
-USAGE:
-List directory:
+  USAGE:
+  List directory:
   GET http://IP/list?dir=A:\*.*
     param dir=PATH/FILTER
 
@@ -132,7 +132,7 @@ void handleFileUpload() {
       // Transmit file to Atari
       fsUploadFile = FILESYSTEM.open(filename, "r");
 
-      if(!transmitFile(&fsUploadFile, String("C:\\" + upload.filename).c_str())) {
+      if (!transmitFile(&fsUploadFile, String("C:\\" + upload.filename).c_str())) {
         DBG_OUTPUT_PORT.println("Upload file to Atari failed");
       }
     }
@@ -839,6 +839,7 @@ void setup()
     DBG_OUTPUT_PORT.printf("FS File: %s, size: %s\n", fileName.c_str(), formatBytes(fileSize).c_str());
     file = root.openNextFile();
   }
+  DBG_OUTPUT_PORT.printf("\n");
 
   // Setup WiFi
 
