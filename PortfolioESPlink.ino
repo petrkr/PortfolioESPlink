@@ -26,13 +26,23 @@
 #define LIST_BUFSIZE       2000
 #define MAX_FILENAME_LEN     79
 
-// Output pins
+/*
+// ESP32 Settings
 #define outDataPIN   5 // LPT Data 0 (pin 2)
 #define outClockPIN 18 // LPT Data 1 (pin 3)
 
-// Input pins
 #define inClockPIN  21 // LPT Paper Error (pin 12, byte S5)
 #define inDataPIN   19 // LPT Select      (pin 13, byte S4)
+*/
+
+// ESP32C3 Settings
+// Output pins
+#define outDataPIN  7 // LPT Data 0 (pin 2)
+#define outClockPIN 5 // LPT Data 1 (pin 3)
+
+// Input pins
+#define inClockPIN  8 // LPT Paper Error (pin 12, byte S5)
+#define inDataPIN   6 // LPT Select      (pin 13, byte S4)
 
 #define DBG_OUTPUT_PORT Serial
 
