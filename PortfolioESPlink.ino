@@ -108,17 +108,17 @@ String getContentType(String filename) {
 
 void handleFileUpload() {
   int val, len, blocksize;
+  String filename;
 
   HTTPUpload& upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
-    String filename = upload.filename;
+    filename = upload.filename;
     if (!filename.startsWith("/")) {
       filename = "/" + filename;
     }
 
     DBG_OUTPUT_PORT.print("handleFileUpload Name: "); DBG_OUTPUT_PORT.println(filename);
-    fsUploadFile = FILESYSTEM.open(filename, "w");
-    filename = String();
+    fsUploadFile = FILESYSTEM.open(filename, FILE_WRITE);
   } else if (upload.status == UPLOAD_FILE_WRITE) {
     DBG_OUTPUT_PORT.print("handleFileUpload Data: "); DBG_OUTPUT_PORT.println(upload.currentSize);
     if (fsUploadFile) {
@@ -126,13 +126,16 @@ void handleFileUpload() {
     }
   } else if (upload.status == UPLOAD_FILE_END) {
     if (fsUploadFile) {
-      String filename = fsUploadFile.name();
       fsUploadFile.close();
 
-      // Transmit file to Atari
-      fsUploadFile = FILESYSTEM.open(filename, "r");
+      filename = upload.filename;
+      if (!filename.startsWith("/")) {
+        filename = "/" + filename;
+      }
 
-      if (!transmitFile(&fsUploadFile, String("C:\\" + upload.filename).c_str())) {
+      DBG_OUTPUT_PORT.print("File "); DBG_OUTPUT_PORT.print(filename); DBG_OUTPUT_PORT.println(" uploaded");
+
+      if (!transmitFile(filename, String("C:\\" + upload.filename).c_str())) {
         DBG_OUTPUT_PORT.println("Upload file to Atari failed");
       }
     }
@@ -318,7 +321,7 @@ void sendBlock(const unsigned char *pData, const unsigned int len, const VERBOSI
       sendByte(recv); checksum -= recv;
 
       if (verbosity >= VERB_COUNTER)
-        DBG_OUTPUT_PORT.printf("Sent %d of %d bytes.\r", i + 1, len);
+        DBG_OUTPUT_PORT.printf("Sent %d of %d bytes.\r\n", i + 1, len);
     }
     sendByte(checksum);
 
@@ -417,25 +420,38 @@ int receiveBlock(unsigned char *pData, const int maxLen, const VERBOSITY verbosi
   Read source file and transmit it to the Portfolio (/t)
   TODO: ESP Link handle
 */
-bool transmitFile(File *file, const char * dest) {
-  int val, len, blocksize;
+bool transmitFile(String filename, const char * dest) {
+  int val, blocksize;
+  size_t len;
+  File file;
+
+  DBG_OUTPUT_PORT.println("transmitFile begin");
+
+
+  file = FILESYSTEM.open(filename);
+
+  DBG_OUTPUT_PORT.println("Opened file");
 
   if (file == NULL) {
-    DBG_OUTPUT_PORT.printf("File not found: %s\n", file->name());
+    DBG_OUTPUT_PORT.printf("File not found: %s\n", file.name());
     return false;
   }
+
+  len = file.size();
 
   /*
     Dateigroesse ermitteln
   */
-  len = file->size();
-  DBG_OUTPUT_PORT.printf("File length: %d\n", len);
+
+  DBG_OUTPUT_PORT.printf("transmitFile: File length: %d\n", len);
   if (len == -1 || len > 32 * 1024 * 1024) {
     /* Directories and huge files (>32 MB) are skipped */
-    DBG_OUTPUT_PORT.printf("Skipping %s.\n", file->name());
+    DBG_OUTPUT_PORT.printf("Skipping %s.\n", file.name());
     return false;
   }
-  file->seek(0, SeekSet);
+
+  DBG_OUTPUT_PORT.println("transmitFile: Seeking to begin of file");
+  file.seek(0, SeekSet);
 
   transmitInit[7] = len & 255;
   transmitInit[8] = (len >> 8) & 255;
@@ -474,15 +490,18 @@ bool transmitFile(File *file, const char * dest) {
     DBG_OUTPUT_PORT.printf("Transmission consists of %d blocks of payload.\n", (len + blocksize - 1) / blocksize);
   }
   while (len > blocksize) {
-    file->readBytes((char*)payload, sizeof(char) * blocksize);
+    file.readBytes((char*)payload, sizeof(char) * blocksize);
     sendBlock(payload, blocksize, VERB_COUNTER);
     len -= blocksize;
   }
 
-  file->readBytes((char*)payload, sizeof(char) * len);
+  file.readBytes((char*)payload, sizeof(char) * len);
   if (len)
     sendBlock(payload, len, VERB_COUNTER);
+
   receiveBlock(controlData, CONTROL_BUFSIZE, VERB_ERRORS);
+
+  file.close();
 
   if (controlData[0] != 0x20) {
     DBG_OUTPUT_PORT.printf("Transmission failed!\nPossilby disk full on Portfolio or directory does not exist.\n");
