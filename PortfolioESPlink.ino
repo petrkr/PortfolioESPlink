@@ -44,6 +44,9 @@
 #define inClockPIN  8 // LPT Paper Error (pin 12, byte S5)
 #define inDataPIN   6 // LPT Select      (pin 13, byte S4)
 
+#define LED2 4
+#define LED3 10
+
 #define DBG_OUTPUT_PORT Serial
 
 #ifdef ESP32
@@ -206,8 +209,11 @@ void setupPort() {
   pinMode(outDataPIN, OUTPUT);
   pinMode(outClockPIN, OUTPUT);
 
-  pinMode(inClockPIN, INPUT);
-  pinMode(inDataPIN, INPUT);
+  pinMode(inClockPIN, INPUT_PULLUP);
+  pinMode(inDataPIN, INPUT_PULLUP);
+
+  pinMode(LED2, OUTPUT);
+  pinMode(LED3, OUTPUT);
 }
 
 
@@ -914,6 +920,8 @@ bool detectPortfolio() {
   syncTick();
   recv = receiveByte();
 
+  Serial.print(recv);
+
   return recv == 90;
 }
 
@@ -925,9 +933,13 @@ void loop() {
   DBG_OUTPUT_PORT.print("Waiting for connection");
   while (!detectPortfolio()) {
     delay(1);
+    digitalWrite(LED2, 1);
+    digitalWrite(LED3, 0);
   }
 
   DBG_OUTPUT_PORT.println("... Connected");
+  digitalWrite(LED2, 0);
+  digitalWrite(LED3, 1);
 
   delay(1);
 }
