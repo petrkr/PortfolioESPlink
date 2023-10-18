@@ -57,7 +57,7 @@ class Pofolink():
 
 
     def _waitClockLow(self):
-        while self.cin.value:
+        while self._cin.value:
             pass
 
 
@@ -70,7 +70,7 @@ class Pofolink():
     def _receiveByte(self):
         recv = 0x00
 
-        for _ in range(0, 4)
+        for _ in range(0, 4):
             self._waitClockLow()
             recv = (recv << 1) | self._getBit()
             self._writePort(0) # Clear clock
@@ -87,7 +87,7 @@ class Pofolink():
         b = 0x00
 
         usleep(250)
-        for _ in range(0, 4)
+        for _ in range(0, 4):
             b = ((data & 0x80) >> 7) | 2     # Output data bit
             self._writePort(b)
 
@@ -110,7 +110,7 @@ class Pofolink():
 
     # This function transmits a block of data.
     # Call int 61h with AX=3002 (open) and AX=3001 (receive) on the Portfolio
-    def sendBlock(self, *pData, len, verbosity):
+    def _sendBlock(self, *pData, len, verbosity):
         recv = 0x00
         i = 0x00
         lenH, lenL = 0x00
@@ -165,9 +165,9 @@ class Pofolink():
 
     # This function receives a block of data and returns its length in bytes.
     # Call int 61h with AX=3002 (open) and AX=3000 (transmit) on the Portfolio.
-    def _receiveBlock(self, pData, maxLen, verbosity)
+    def _receiveBlock(self, pData, maxLen, verbosity):
         len, i = 0
-        char lenH, lenL = 0x00
+        lenH, lenL = 0x00
         checksum = 0x00
         recv = 0x00
 
@@ -195,14 +195,14 @@ class Pofolink():
             return 0
 
         for i in range(0, len):
-            unsigned char recv = receiveByte()
+            recv = receiveByte()
             checksum += recv
             pData[i] = recv
 
-            if (verbosity >= VERB_COUNTER)
+            if (verbosity >= VERB_COUNTER):
                 sys.out.write(".")
 
-        if (verbosity >= VERB_COUNTER)
+        if (verbosity >= VERB_COUNTER):
             print("")
 
         recv = receiveByte()
