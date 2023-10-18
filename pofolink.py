@@ -11,10 +11,10 @@ class Pofolink():
     VERB_COUNTER = 2
     VERB_FLOWCONTROL = 3
 
-    _PAYLOAD_BUFSIZE = const(60000)
-    _CONTROL_BUFSIZE = const(100)
-    _LIST_BUFSIZE = const(2000)
-    _MAX_FILENAME_LEN = const(79)
+    _PAYLOAD_BUFSIZE = 60000
+    _CONTROL_BUFSIZE = 100
+    _LIST_BUFSIZE = 2000
+    _MAX_FILENAME_LEN = 79
 
     _transmitInit = [
         # Offset 0: Function
