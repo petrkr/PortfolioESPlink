@@ -239,6 +239,31 @@ class Pofolink():
         return recv == 90
 
 
+    def listFiles(self, pattern):
+        i, num = 0x00
+        name = ""
+
+        print("Fetching directory listing for {}\n", pattern)
+
+        #strncpy((char*)receiveInit + 3, pattern, _MAX_FILENAME_LEN)
+        data = bytearray()
+        data.extend(self._receiveInit)
+        data.extend(pattern.encode()[:self._MAX_FILENAME_LEN])
+
+        #sendBlock(receiveInit, sizeof(receiveInit), VERB_ERRORS)
+        #receiveBlock(payload, PAYLOAD_BUFSIZE, VERB_ERRORS)
+
+        num = payload[0] + (payload[1] << 8)
+        if (num == 0):
+            DBG_OUTPUT_PORT.printf("No files.\n")
+
+        name = payload + 2
+
+        for _ in range (0, n):
+            DBG_OUTPUT_PORT.printf("%s\n", name);
+            name += strlen(name) + 1;
+
+
 def main():
     dIn = Pin(6, Pin.INPUT)
     dOut = Pin(7, Pin.INPUT)
