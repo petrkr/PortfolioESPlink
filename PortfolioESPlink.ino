@@ -157,7 +157,7 @@ void handleFileUpload() {
 
 }
 
-void handleFileList() {
+void handleFileListAtari() {
   if (!server.hasArg("dir")) {
     server.send(500, "text/plain", "BAD ARGS");
     return;
@@ -184,21 +184,21 @@ void handleFileList() {
 
   name = (char*)payload + 2;
 
-  String output = "[";
+  String output = "{ \"files\" : [";
 
   for (i = 0; i < num; i++) {
     DBG_OUTPUT_PORT.printf("%s\n", name);
-    if (output != "[") {
+    if (output != "{ \"files\" : [") {
       output += ',';
     }
-    output += "{\"name\":\"";
+    output += "\"";
     output += name;
-    output += "\"}";
+    output += "\"";
 
     name += strlen(name) + 1;
   }
 
-  output += "]";
+  output += "]}";
   server.send(200, "text/json", output);
 }
 
@@ -899,7 +899,7 @@ void setup()
     server.send(200, "text/plain", "");
   }, handleFileUpload);
 
-  server.on("/list", HTTP_GET, handleFileList);
+  server.on("/listAtari", HTTP_GET, handleFileListAtari);
 
   // Setup HTTP Server
   server.begin();
