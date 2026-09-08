@@ -24,7 +24,7 @@ bool PortfolioLink::begin(const PortfolioPins& pins) {
 
   payload_ = static_cast<unsigned char*>(malloc(PAYLOAD_BUFSIZE));
   controlData_ = static_cast<unsigned char*>(malloc(CONTROL_BUFSIZE));
-  jobQueue_ = xQueueCreate(1, sizeof(Job*));
+  jobQueue_ = xQueueCreate(1, sizeof(Job));
 
   if (!payload_ || !controlData_ || !jobQueue_) {
     log_.println("PortfolioLink: init failed");
@@ -43,12 +43,46 @@ PortfolioResult PortfolioLink::lastResult() const {
   return lastResult_;
 }
 
+PortfolioTransferPhase PortfolioLink::transferPhase() const {
+  return transferPhase_;
+}
+
+size_t PortfolioLink::transferDone() const {
+  return transferDone_;
+}
+
+size_t PortfolioLink::transferTotal() const {
+  return transferTotal_;
+}
+
 bool PortfolioLink::isConnected() const {
   return status_ == PortfolioStatus::Connected;
 }
 
 bool PortfolioLink::isBusy() const {
   return status_ == PortfolioStatus::Busy;
+}
+
+bool PortfolioLink::startUpload(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return false;
+  }
+
+  Job job{};
+  job.type = JobType::Upload;
+  job.fs = &fs;
+  job.overwrite = overwrite;
+  strncpy(job.localPath, localPath, MAX_FILENAME_LEN);
+  strncpy(job.pofoPath, pofoPath, MAX_FILENAME_LEN);
+  job.localPath[MAX_FILENAME_LEN] = '\0';
+  job.pofoPath[MAX_FILENAME_LEN] = '\0';
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE) {
+    status_ = PortfolioStatus::Disconnected;
+    return false;
+  }
+  return true;
 }
 
 PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
@@ -58,7 +92,8 @@ PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
 
   Job job{};
   job.type = JobType::List;
-  job.pofoPath = pattern;
+  strncpy(job.pofoPath, pattern, MAX_FILENAME_LEN);
+  job.pofoPath[MAX_FILENAME_LEN] = '\0';
   job.listOutput = &output;
   job.result = PortfolioResult::Unknown;
   job.done = xSemaphoreCreateBinary();
@@ -67,9 +102,8 @@ PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
     return PortfolioResult::Unknown;
   }
 
-  Job* jobPtr = &job;
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &jobPtr, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     output = "";
@@ -88,9 +122,11 @@ PortfolioResult PortfolioLink::uploadFile(fs::FS& fs, const char* localPath, con
   Job job{};
   job.type = JobType::Upload;
   job.fs = &fs;
-  job.localPath = localPath;
-  job.pofoPath = pofoPath;
   job.overwrite = overwrite;
+  strncpy(job.localPath, localPath, MAX_FILENAME_LEN);
+  strncpy(job.pofoPath, pofoPath, MAX_FILENAME_LEN);
+  job.localPath[MAX_FILENAME_LEN] = '\0';
+  job.pofoPath[MAX_FILENAME_LEN] = '\0';
   job.result = PortfolioResult::Unknown;
   job.done = xSemaphoreCreateBinary();
 
@@ -98,9 +134,8 @@ PortfolioResult PortfolioLink::uploadFile(fs::FS& fs, const char* localPath, con
     return PortfolioResult::Unknown;
   }
 
-  Job* jobPtr = &job;
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &jobPtr, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     return PortfolioResult::Unknown;
@@ -119,18 +154,20 @@ void PortfolioLink::taskLoop() {
   TickType_t lastDetect = 0;
 
   for (;;) {
-    Job* job = nullptr;
-    if (xQueueReceive(jobQueue_, &job, 0) == pdTRUE && job) {
-      if (job->type == JobType::List && job->listOutput) {
-        job->result = runList(job->pofoPath, *job->listOutput);
-      } else if (job->type == JobType::Upload && job->fs) {
-        job->result = runUpload(*job->fs, job->localPath, job->pofoPath, job->overwrite);
+    Job job{};
+    if (xQueueReceive(jobQueue_, &job, 0) == pdTRUE) {
+      if (job.type == JobType::List && job.listOutput) {
+        job.result = runList(job.pofoPath, *job.listOutput);
+      } else if (job.type == JobType::Upload && job.fs) {
+        job.result = runUpload(*job.fs, job.localPath, job.pofoPath, job.overwrite);
       } else {
-        job->result = PortfolioResult::Unknown;
+        job.result = PortfolioResult::Unknown;
       }
 
-      finishJob(job->result);
-      xSemaphoreGive(job->done);
+      finishJob(job.result);
+      if (job.done) {
+        xSemaphoreGive(job.done);
+      }
       continue;
     }
 
@@ -152,6 +189,7 @@ void PortfolioLink::taskLoop() {
 
 void PortfolioLink::finishJob(PortfolioResult result) {
   lastResult_ = result;
+  transferPhase_ = PortfolioTransferPhase::Idle;
   status_ = result == PortfolioResult::Ok ? PortfolioStatus::Connected : PortfolioStatus::Disconnected;
 }
 
@@ -280,6 +318,12 @@ bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbo
 
     if (verbosity >= VERB_COUNTER) {
       log_.printf("Sent %d of %d bytes.\r\n", i + 1, len);
+    }
+    if (verbosity >= VERB_COUNTER && transferTotal_ > 0) {
+      transferDone_++;
+    }
+    if ((i & 0x3f) == 0x3f) {
+      taskYIELD();
     }
   }
 
@@ -463,6 +507,10 @@ PortfolioResult PortfolioLink::runUpload(fs::FS& fs, const char* filename, const
     file.close();
     return PortfolioResult::Unknown;
   }
+
+  transferPhase_ = PortfolioTransferPhase::PofoUpload;
+  transferDone_ = 0;
+  transferTotal_ = len;
 
   while (len > static_cast<size_t>(blocksize)) {
     file.readBytes(reinterpret_cast<char*>(payload_), blocksize);

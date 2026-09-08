@@ -26,6 +26,11 @@ enum class PortfolioResult {
   Unknown
 };
 
+enum class PortfolioTransferPhase {
+  Idle,
+  PofoUpload
+};
+
 class PortfolioLink {
 public:
   static constexpr size_t PAYLOAD_BUFSIZE = 60000;
@@ -39,9 +44,13 @@ public:
 
   PortfolioStatus status() const;
   PortfolioResult lastResult() const;
+  PortfolioTransferPhase transferPhase() const;
+  size_t transferDone() const;
+  size_t transferTotal() const;
   bool isConnected() const;
   bool isBusy() const;
 
+  bool startUpload(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite);
   PortfolioResult listFiles(const char* pattern, String& output);
   PortfolioResult uploadFile(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite);
 
@@ -61,8 +70,8 @@ private:
   struct Job {
     JobType type;
     fs::FS* fs;
-    const char* localPath;
-    const char* pofoPath;
+    char localPath[MAX_FILENAME_LEN + 1];
+    char pofoPath[MAX_FILENAME_LEN + 1];
     bool overwrite;
     String* listOutput;
     PortfolioResult result;
@@ -93,6 +102,9 @@ private:
   TaskHandle_t task_ = nullptr;
   volatile PortfolioStatus status_ = PortfolioStatus::Disconnected;
   volatile PortfolioResult lastResult_ = PortfolioResult::Unknown;
+  volatile PortfolioTransferPhase transferPhase_ = PortfolioTransferPhase::Idle;
+  volatile size_t transferDone_ = 0;
+  volatile size_t transferTotal_ = 0;
   unsigned char* payload_ = nullptr;
   unsigned char* controlData_ = nullptr;
   unsigned char transmitInit_[90] = {

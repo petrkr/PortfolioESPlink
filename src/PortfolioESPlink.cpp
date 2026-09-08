@@ -1,6 +1,6 @@
 #include <Arduino.h>
-#include <SPIFFS.h>
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
+#include <LittleFS.h>
 #include <WiFi.h>
 
 #include "PortfolioLink.h"
@@ -9,13 +9,13 @@
 #define LED3 10
 
 #define DBG_OUTPUT_PORT Serial
-#define FILESYSTEM SPIFFS
+#define FILESYSTEM LittleFS
 
 const char* ssid = "IoT";
 const char* password = "octopus19";
 const char* host = "portfolioesplink";
 
-WebServer server(80);
+AsyncWebServer server(80);
 File fsUploadFile;
 
 PortfolioLink portfolio(DBG_OUTPUT_PORT);
@@ -29,6 +29,16 @@ const char* statusText(PortfolioStatus status) {
     case PortfolioStatus::Disconnected:
     default:
       return "disconnected";
+  }
+}
+
+const char* phaseText(PortfolioTransferPhase phase) {
+  switch (phase) {
+    case PortfolioTransferPhase::PofoUpload:
+      return "pofo_upload";
+    case PortfolioTransferPhase::Idle:
+    default:
+      return "idle";
   }
 }
 
@@ -60,6 +70,44 @@ String filesToJson(const String& files) {
   return output;
 }
 
+String espFilesToJson(const String& dir) {
+  File root = FILESYSTEM.open(dir);
+  String output = "{ \"items\" : [";
+  bool first = true;
+
+  if (!root || !root.isDirectory()) {
+    return "{ \"items\" : [] }";
+  }
+
+  File file = root.openNextFile();
+  while (file) {
+    String name = file.name();
+    if (name.startsWith(dir) && dir != "/") {
+      name = name.substring(dir.length());
+    }
+    if (name.startsWith("/")) {
+      name = name.substring(1);
+    }
+
+    if (!first) {
+      output += ',';
+    }
+    output += "{ \"name\" : \"";
+    output += name;
+    output += "\", \"type\" : \"";
+    output += file.isDirectory() ? "folder" : "file";
+    output += "\", \"size\" : ";
+    output += file.size();
+    output += " }";
+    first = false;
+
+    file = root.openNextFile();
+  }
+
+  output += "]}";
+  return output;
+}
+
 String formatBytes(size_t bytes) {
   if (bytes < 1024) {
     return String(bytes) + "B";
@@ -71,76 +119,92 @@ String formatBytes(size_t bytes) {
   return String(bytes / 1024.0 / 1024.0 / 1024.0) + "GB";
 }
 
-void handleFileUpload() {
-  String filename;
-  HTTPUpload& upload = server.upload();
-
-  if (upload.status == UPLOAD_FILE_START) {
-    filename = upload.filename;
-    if (!filename.startsWith("/")) {
-      filename = "/" + filename;
-    }
-
-    DBG_OUTPUT_PORT.print("handleFileUpload Name: ");
-    DBG_OUTPUT_PORT.println(filename);
-    fsUploadFile = FILESYSTEM.open(filename, FILE_WRITE);
-  } else if (upload.status == UPLOAD_FILE_WRITE) {
-    DBG_OUTPUT_PORT.print("handleFileUpload Data: ");
-    DBG_OUTPUT_PORT.println(upload.currentSize);
-    if (fsUploadFile) {
-      fsUploadFile.write(upload.buf, upload.currentSize);
-    }
-  } else if (upload.status == UPLOAD_FILE_END) {
-    if (fsUploadFile) {
-      fsUploadFile.close();
-
-      filename = upload.filename;
-      if (!filename.startsWith("/")) {
-        filename = "/" + filename;
-      }
-
-      DBG_OUTPUT_PORT.print("File ");
-      DBG_OUTPUT_PORT.print(filename);
-      DBG_OUTPUT_PORT.println(" uploaded");
-
-      bool overwrite = server.hasArg("overwrite");
-      String pofoPath = "C:\\" + upload.filename;
-      if (portfolio.uploadFile(FILESYSTEM, filename.c_str(), pofoPath.c_str(), overwrite) != PortfolioResult::Ok) {
-        DBG_OUTPUT_PORT.println("Upload file to Atari failed");
-      }
-    }
-    DBG_OUTPUT_PORT.print("handleFileUpload Size: ");
-    DBG_OUTPUT_PORT.println(upload.totalSize);
+void handleFileUpload(AsyncWebServerRequest* request,
+                      String filename,
+                      size_t index,
+                      uint8_t* data,
+                      size_t len,
+                      bool final) {
+  String localPath = filename;
+  if (!localPath.startsWith("/")) {
+    localPath = "/" + localPath;
   }
-}
 
-void handleFileListAtari() {
-  server.enableCORS();
+  if (index == 0) {
+    DBG_OUTPUT_PORT.print("handleFileUpload Name: ");
+    DBG_OUTPUT_PORT.println(localPath);
+    fsUploadFile = FILESYSTEM.open(localPath, FILE_WRITE);
+  }
 
-  if (!server.hasArg("dir")) {
-    server.send(500, "text/plain", "BAD ARGS");
+  if (fsUploadFile && len > 0) {
+    fsUploadFile.write(data, len);
+  }
+
+  if (!final) {
     return;
   }
 
-  String path = server.arg("dir");
+  if (fsUploadFile) {
+    fsUploadFile.close();
+  }
+
+  DBG_OUTPUT_PORT.print("File ");
+  DBG_OUTPUT_PORT.print(localPath);
+  DBG_OUTPUT_PORT.println(" uploaded");
+
+  bool overwrite = request->hasParam("overwrite");
+  String pofoPath = "C:\\" + filename;
+  if (portfolio.startUpload(FILESYSTEM, localPath.c_str(), pofoPath.c_str(), overwrite)) {
+    request->send(202, "text/plain", "Upload queued");
+  } else {
+    DBG_OUTPUT_PORT.println("Upload job rejected");
+    request->send(409, "text/plain", "Portfolio busy");
+  }
+}
+
+void handleFileListAtari(AsyncWebServerRequest* request) {
+  if (!request->hasParam("dir")) {
+    request->send(500, "text/plain", "BAD ARGS");
+    return;
+  }
+
+  String path = request->getParam("dir")->value();
   DBG_OUTPUT_PORT.println("handleFileList: " + path);
 
   String files;
   if (portfolio.listFiles(path.c_str(), files) != PortfolioResult::Ok) {
-    server.send(500, "text/plain", "Portfolio list failed");
+    request->send(500, "text/plain", "Portfolio list failed");
     return;
   }
 
-  server.send(200, "application/json", filesToJson(files));
+  request->send(200, "application/json", filesToJson(files));
 }
 
-void handleStatus() {
+void handleStatus(AsyncWebServerRequest* request) {
   String output = "{ \"status\" : \"";
   output += statusText(portfolio.status());
   output += "\", \"connected\" : ";
   output += portfolio.isConnected() ? "true" : "false";
+  output += ", \"phase\" : \"";
+  output += phaseText(portfolio.transferPhase());
+  output += "\", \"done\" : ";
+  output += portfolio.transferDone();
+  output += ", \"total\" : ";
+  output += portfolio.transferTotal();
   output += " }";
-  server.send(200, "application/json", output);
+  request->send(200, "application/json", output);
+}
+
+void handleFileListESP32(AsyncWebServerRequest* request) {
+  String dir = "/";
+  if (request->hasParam("dir")) {
+    dir = request->getParam("dir")->value();
+  }
+  if (!dir.startsWith("/")) {
+    dir = "/" + dir;
+  }
+
+  request->send(200, "application/json", espFilesToJson(dir));
 }
 
 void setup() {
@@ -193,18 +257,19 @@ void setup() {
   DBG_OUTPUT_PORT.print("Connected! IP address: ");
   DBG_OUTPUT_PORT.println(WiFi.localIP());
 
-  server.on("/upload", HTTP_POST, []() {
-    server.send(200, "text/plain", "");
-  }, handleFileUpload);
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+
+  server.on("/upload", HTTP_POST, [](AsyncWebServerRequest* request) {}, handleFileUpload);
 
   server.on("/listAtari", HTTP_GET, handleFileListAtari);
+  server.on("/listESP32", HTTP_GET, handleFileListESP32);
   server.on("/status", HTTP_GET, handleStatus);
+  server.serveStatic("/", FILESYSTEM, "/web/").setDefaultFile("index.htm");
 
   server.begin();
 }
 
 void loop() {
-  server.handleClient();
   digitalWrite(LED2, portfolio.isBusy() ? 1 : 0);
   digitalWrite(LED3, portfolio.isConnected() ? 1 : 0);
   delay(1);
