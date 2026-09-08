@@ -320,7 +320,7 @@ bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbo
     if (verbosity >= VERB_COUNTER) {
       log_.printf("Sent %d of %d bytes.\r\n", i + 1, len);
     }
-    if (verbosity >= VERB_COUNTER && transferTotal_ > 0) {
+    if (transferTotal_ > 0) {
       transferDone_++;
     }
   }
@@ -383,6 +383,9 @@ int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbo
 
     if (verbosity >= VERB_COUNTER) {
       log_.print(".");
+    }
+    if (transferTotal_ > 0) {
+      transferDone_++;
     }
   }
 

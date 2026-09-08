@@ -10,6 +10,7 @@
 
 #define DBG_OUTPUT_PORT Serial
 #define FILESYSTEM LittleFS
+#define DATA_DIR "/data"
 
 const char* ssid = "IoT";
 const char* password = "octopus19";
@@ -82,7 +83,8 @@ String filesToJson(const String& files) {
   return output;
 }
 
-String espFilesToJson(const String& dir) {
+String espFilesToJson(const String& relDir) {
+  String dir = relDir == "/" ? String(DATA_DIR) : String(DATA_DIR) + relDir;
   File root = FILESYSTEM.open(dir);
   String output = "{ \"items\" : [";
   bool first = true;
@@ -94,7 +96,7 @@ String espFilesToJson(const String& dir) {
   File file = root.openNextFile();
   while (file) {
     String name = file.name();
-    if (name.startsWith(dir) && dir != "/") {
+    if (name.startsWith(dir)) {
       name = name.substring(dir.length());
     }
     if (name.startsWith("/")) {
@@ -151,15 +153,16 @@ void handleFileUpload(AsyncWebServerRequest* request,
                       uint8_t* data,
                       size_t len,
                       bool final) {
-  String localPath = filename;
-  if (!localPath.startsWith("/")) {
-    localPath = "/" + localPath;
+  String relPath = filename;
+  if (!relPath.startsWith("/")) {
+    relPath = "/" + relPath;
   }
+  String fsPath = String(DATA_DIR) + relPath;
 
   if (index == 0) {
     DBG_OUTPUT_PORT.print("handleFileUpload Name: ");
-    DBG_OUTPUT_PORT.println(localPath);
-    fsUploadFile = FILESYSTEM.open(localPath, FILE_WRITE);
+    DBG_OUTPUT_PORT.println(fsPath);
+    fsUploadFile = FILESYSTEM.open(fsPath, FILE_WRITE);
   }
 
   if (fsUploadFile && len > 0) {
@@ -175,7 +178,7 @@ void handleFileUpload(AsyncWebServerRequest* request,
   }
 
   DBG_OUTPUT_PORT.print("File ");
-  DBG_OUTPUT_PORT.print(localPath);
+  DBG_OUTPUT_PORT.print(fsPath);
   DBG_OUTPUT_PORT.println(" uploaded");
 
   if (!request->hasParam("toAtari")) {
@@ -238,17 +241,17 @@ void handleDeleteESP32(AsyncWebServerRequest* request) {
     return;
   }
 
-  String path = request->getParam("path")->value();
-  if (!path.startsWith("/")) {
-    path = "/" + path;
+  String relPath = request->getParam("path")->value();
+  if (!relPath.startsWith("/")) {
+    relPath = "/" + relPath;
   }
 
-  if (path.startsWith("/web/") || path == "/web") {
-    request->send(403, "text/plain", "Refusing to delete UI files");
+  if (relPath.indexOf("..") >= 0) {
+    request->send(403, "text/plain", "Invalid path");
     return;
   }
 
-  if (!FILESYSTEM.remove(path)) {
+  if (!FILESYSTEM.remove(String(DATA_DIR) + relPath)) {
     request->send(404, "text/plain", "Delete failed");
     return;
   }
@@ -288,10 +291,10 @@ void handleDownloadFromAtari(AsyncWebServerRequest* request) {
   if (backslash >= 0) {
     basename = basename.substring(backslash + 1);
   }
-  String localPath = "/" + basename;
+  String fsPath = String(DATA_DIR) + "/" + basename;
 
   bool overwrite = request->hasParam("overwrite");
-  if (portfolio.startDownload(FILESYSTEM, pofoPath.c_str(), localPath.c_str(), overwrite)) {
+  if (portfolio.startDownload(FILESYSTEM, pofoPath.c_str(), fsPath.c_str(), overwrite)) {
     request->send(202, "text/plain", "Download queued");
   } else {
     request->send(409, "text/plain", "Portfolio busy");
@@ -333,6 +336,10 @@ void setup() {
     FILESYSTEM.begin();
   }
 
+  if (!FILESYSTEM.exists(DATA_DIR)) {
+    FILESYSTEM.mkdir(DATA_DIR);
+  }
+
   File root = FILESYSTEM.open("/");
   File file = root.openNextFile();
   while (file) {
@@ -370,7 +377,7 @@ void setup() {
   server.on("/deleteESP32", HTTP_POST, handleDeleteESP32);
   server.on("/sendToAtari", HTTP_POST, handleSendToAtari);
   server.on("/downloadFromAtari", HTTP_POST, handleDownloadFromAtari);
-  server.serveStatic("/files/", FILESYSTEM, "/").setCacheControl("no-store");
+  server.serveStatic("/files/", FILESYSTEM, DATA_DIR "/").setCacheControl("no-store");
   server.serveStatic("/", FILESYSTEM, "/web/").setDefaultFile("index.htm");
 
   server.begin();
