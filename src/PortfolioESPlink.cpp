@@ -39,6 +39,7 @@ const char* resultText(PortfolioResult result) {
       return "destination rejected (bad path or disk full)";
     case PortfolioResult::Unknown:
       return "error";
+    case PortfolioResult::None:
     case PortfolioResult::Ok:
     default:
       return "";

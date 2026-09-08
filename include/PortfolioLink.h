@@ -22,6 +22,7 @@ enum class PortfolioStatus {
 };
 
 enum class PortfolioResult {
+  None,
   Ok,
   Unknown,
   InvalidPath
@@ -104,7 +105,7 @@ private:
   QueueHandle_t jobQueue_ = nullptr;
   TaskHandle_t task_ = nullptr;
   volatile PortfolioStatus status_ = PortfolioStatus::Disconnected;
-  volatile PortfolioResult lastResult_ = PortfolioResult::Unknown;
+  volatile PortfolioResult lastResult_ = PortfolioResult::None;
   volatile PortfolioTransferPhase transferPhase_ = PortfolioTransferPhase::Idle;
   volatile size_t transferDone_ = 0;
   volatile size_t transferTotal_ = 0;
