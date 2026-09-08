@@ -5,6 +5,10 @@
 namespace {
 const unsigned char TRANSMIT_OVERWRITE[3] = {0x05, 0x00, 0x70};
 const unsigned char TRANSMIT_CANCEL[3] = {0x00, 0x00, 0x00};
+const uint32_t CLOCK_TIMEOUT_US = 250000;
+const TickType_t DETECT_INTERVAL = pdMS_TO_TICKS(100);
+const uint8_t DETECT_MISSES_TO_DISCONNECT = 8;
+const TickType_t JOB_WAIT = pdMS_TO_TICKS(30000);
 }
 
 PortfolioLink::PortfolioLink(Print& log) : log_(log) {}
@@ -12,7 +16,6 @@ PortfolioLink::PortfolioLink(Print& log) : log_(log) {}
 PortfolioLink::~PortfolioLink() {
   free(payload_);
   free(controlData_);
-  free(list_);
 }
 
 bool PortfolioLink::begin(const PortfolioPins& pins) {
@@ -21,18 +24,135 @@ bool PortfolioLink::begin(const PortfolioPins& pins) {
 
   payload_ = static_cast<unsigned char*>(malloc(PAYLOAD_BUFSIZE));
   controlData_ = static_cast<unsigned char*>(malloc(CONTROL_BUFSIZE));
-  list_ = static_cast<unsigned char*>(malloc(LIST_BUFSIZE));
+  jobQueue_ = xQueueCreate(1, sizeof(Job*));
 
-  if (!payload_ || !controlData_ || !list_) {
-    log_.println("PortfolioLink: out of memory");
+  if (!payload_ || !controlData_ || !jobQueue_) {
+    log_.println("PortfolioLink: init failed");
     return false;
   }
 
-  return true;
+  BaseType_t ok = xTaskCreate(taskThunk, "pofo", 8192, this, 1, &task_);
+  return ok == pdPASS;
 }
 
-void PortfolioLink::setForce(bool enabled) {
-  force_ = enabled;
+PortfolioStatus PortfolioLink::status() const {
+  return status_;
+}
+
+PortfolioResult PortfolioLink::lastResult() const {
+  return lastResult_;
+}
+
+bool PortfolioLink::isConnected() const {
+  return status_ == PortfolioStatus::Connected;
+}
+
+bool PortfolioLink::isBusy() const {
+  return status_ == PortfolioStatus::Busy;
+}
+
+PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  Job job{};
+  job.type = JobType::List;
+  job.pofoPath = pattern;
+  job.listOutput = &output;
+  job.result = PortfolioResult::Unknown;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  Job* jobPtr = &job;
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &jobPtr, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    output = "";
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return job.result;
+}
+
+PortfolioResult PortfolioLink::uploadFile(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  Job job{};
+  job.type = JobType::Upload;
+  job.fs = &fs;
+  job.localPath = localPath;
+  job.pofoPath = pofoPath;
+  job.overwrite = overwrite;
+  job.result = PortfolioResult::Unknown;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  Job* jobPtr = &job;
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &jobPtr, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return job.result;
+}
+
+void PortfolioLink::taskThunk(void* arg) {
+  static_cast<PortfolioLink*>(arg)->taskLoop();
+}
+
+void PortfolioLink::taskLoop() {
+  uint8_t misses = DETECT_MISSES_TO_DISCONNECT;
+  TickType_t lastDetect = 0;
+
+  for (;;) {
+    Job* job = nullptr;
+    if (xQueueReceive(jobQueue_, &job, 0) == pdTRUE && job) {
+      if (job->type == JobType::List && job->listOutput) {
+        job->result = runList(job->pofoPath, *job->listOutput);
+      } else if (job->type == JobType::Upload && job->fs) {
+        job->result = runUpload(*job->fs, job->localPath, job->pofoPath, job->overwrite);
+      } else {
+        job->result = PortfolioResult::Unknown;
+      }
+
+      finishJob(job->result);
+      xSemaphoreGive(job->done);
+      continue;
+    }
+
+    TickType_t now = xTaskGetTickCount();
+    if (now - lastDetect >= DETECT_INTERVAL) {
+      lastDetect = now;
+      if (detectOnce()) {
+        misses = 0;
+        status_ = PortfolioStatus::Connected;
+      } else if (misses < DETECT_MISSES_TO_DISCONNECT) {
+        misses++;
+      } else {
+        status_ = PortfolioStatus::Disconnected;
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+
+void PortfolioLink::finishJob(PortfolioResult result) {
+  lastResult_ = result;
+  status_ = result == PortfolioResult::Ok ? PortfolioStatus::Connected : PortfolioStatus::Disconnected;
 }
 
 void PortfolioLink::setupPort() {
@@ -47,38 +167,52 @@ void PortfolioLink::writePort(unsigned char data) {
   digitalWrite(pins_.outClock, data & 2);
 }
 
-void PortfolioLink::waitClockHigh() {
+bool PortfolioLink::waitClockHigh(uint32_t timeoutUs) {
+  uint32_t start = micros();
   while (!digitalRead(pins_.inClock)) {
-    delay(0);
+    if (micros() - start >= timeoutUs) {
+      return false;
+    }
   }
+  return true;
 }
 
-void PortfolioLink::waitClockLow() {
+bool PortfolioLink::waitClockLow(uint32_t timeoutUs) {
+  uint32_t start = micros();
   while (digitalRead(pins_.inClock)) {
-    delay(0);
+    if (micros() - start >= timeoutUs) {
+      return false;
+    }
   }
+  return true;
 }
 
 unsigned char PortfolioLink::getBit() {
   return digitalRead(pins_.inData);
 }
 
-unsigned char PortfolioLink::receiveByte() {
+bool PortfolioLink::receiveByte(unsigned char& out) {
   unsigned char recv = 0;
 
   for (int i = 0; i < 4; i++) {
-    waitClockLow();
+    if (!waitClockLow(CLOCK_TIMEOUT_US)) {
+      return false;
+    }
     recv = (recv << 1) | getBit();
     writePort(0);
-    waitClockHigh();
+
+    if (!waitClockHigh(CLOCK_TIMEOUT_US)) {
+      return false;
+    }
     recv = (recv << 1) | getBit();
     writePort(2);
   }
 
-  return recv;
+  out = recv;
+  return true;
 }
 
-void PortfolioLink::sendByte(unsigned char data) {
+bool PortfolioLink::sendByte(unsigned char data) {
   delayMicroseconds(250);
 
   for (int i = 0; i < 4; i++) {
@@ -88,7 +222,9 @@ void PortfolioLink::sendByte(unsigned char data) {
     writePort(b);
 
     data = data << 1;
-    waitClockLow();
+    if (!waitClockLow(CLOCK_TIMEOUT_US)) {
+      return false;
+    }
 
     b = (data & 0x80) >> 7;
     writePort(b);
@@ -96,8 +232,12 @@ void PortfolioLink::sendByte(unsigned char data) {
     writePort(b);
 
     data = data << 1;
-    waitClockHigh();
+    if (!waitClockHigh(CLOCK_TIMEOUT_US)) {
+      return false;
+    }
   }
+
+  return true;
 }
 
 bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbosity verbosity) {
@@ -105,8 +245,8 @@ bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbo
     return true;
   }
 
-  unsigned char recv = receiveByte();
-  if (recv != 'Z') {
+  unsigned char recv = 0;
+  if (!receiveByte(recv) || recv != 'Z') {
     if (verbosity >= VERB_ERRORS) {
       log_.println("Portfolio not ready");
     }
@@ -114,19 +254,28 @@ bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbo
   }
 
   delayMicroseconds(50000);
-  sendByte(0x0a5);
+  if (!sendByte(0x0a5)) {
+    return false;
+  }
 
   unsigned char checksum = 0;
   unsigned char lenH = len >> 8;
   unsigned char lenL = len & 255;
-  sendByte(lenL);
+  if (!sendByte(lenL)) {
+    return false;
+  }
   checksum -= lenL;
-  sendByte(lenH);
+
+  if (!sendByte(lenH)) {
+    return false;
+  }
   checksum -= lenH;
 
   for (unsigned int i = 0; i < len; i++) {
     recv = data[i];
-    sendByte(recv);
+    if (!sendByte(recv)) {
+      return false;
+    }
     checksum -= recv;
 
     if (verbosity >= VERB_COUNTER) {
@@ -134,16 +283,17 @@ bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbo
     }
   }
 
-  sendByte(checksum);
+  if (!sendByte(checksum)) {
+    return false;
+  }
 
   if (verbosity >= VERB_COUNTER) {
     log_.println();
   }
 
-  recv = receiveByte();
-  if (recv != checksum) {
+  if (!receiveByte(recv) || recv != checksum) {
     if (verbosity >= VERB_ERRORS) {
-      log_.printf("checksum ERR: %d\n", recv);
+      log_.printf("checksum ERR: got %d expected %d\n", recv, checksum);
     }
     return false;
   }
@@ -154,19 +304,24 @@ bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbo
 int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbosity) {
   unsigned char checksum = 0;
 
-  sendByte('Z');
+  if (!sendByte('Z')) {
+    return -1;
+  }
 
-  unsigned char recv = receiveByte();
-  if (recv != 0x0a5) {
+  unsigned char recv = 0;
+  if (!receiveByte(recv) || recv != 0x0a5) {
     if (verbosity >= VERB_ERRORS) {
       log_.printf("Acknowledge ERROR (received %2X instead of A5)\n", recv);
     }
     return -1;
   }
 
-  unsigned char lenL = receiveByte();
+  unsigned char lenL = 0;
+  unsigned char lenH = 0;
+  if (!receiveByte(lenL) || !receiveByte(lenH)) {
+    return -1;
+  }
   checksum += lenL;
-  unsigned char lenH = receiveByte();
   checksum += lenH;
   unsigned int len = (lenH << 8) | lenL;
 
@@ -178,7 +333,9 @@ int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbo
   }
 
   for (unsigned int i = 0; i < len; i++) {
-    recv = receiveByte();
+    if (!receiveByte(recv)) {
+      return -1;
+    }
     checksum += recv;
     data[i] = recv;
 
@@ -191,8 +348,7 @@ int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbo
     log_.println();
   }
 
-  recv = receiveByte();
-  if (static_cast<unsigned char>(256 - recv) != checksum) {
+  if (!receiveByte(recv) || static_cast<unsigned char>(256 - recv) != checksum) {
     if (verbosity >= VERB_ERRORS) {
       log_.printf("checksum ERR %d %d\n", static_cast<unsigned char>(256 - recv), checksum);
     }
@@ -200,24 +356,19 @@ int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbo
   }
 
   delayMicroseconds(100);
-  sendByte(static_cast<unsigned char>(256 - checksum));
+  if (!sendByte(static_cast<unsigned char>(256 - checksum))) {
+    return -1;
+  }
 
   return len;
 }
 
-bool PortfolioLink::detect() {
-  waitClockLow();
-  writePort(0);
-  waitClockHigh();
-  writePort(2);
-
-  unsigned char recv = receiveByte();
-  log_.print(recv);
-
-  return recv == 'Z';
+bool PortfolioLink::detectOnce() {
+  unsigned char recv = 0;
+  return receiveByte(recv) && recv == 'Z';
 }
 
-bool PortfolioLink::listFilesJson(const char* pattern, String& output) {
+PortfolioResult PortfolioLink::runList(const char* pattern, String& output) {
   log_.printf("Fetching directory listing for %s\n", pattern);
 
   receiveInit_[0] = 6;
@@ -225,44 +376,35 @@ bool PortfolioLink::listFilesJson(const char* pattern, String& output) {
   receiveInit_[sizeof(receiveInit_) - 1] = '\0';
 
   if (!sendBlock(receiveInit_, sizeof(receiveInit_), VERB_ERRORS)) {
-    return false;
+    return PortfolioResult::Unknown;
   }
 
   if (receiveBlock(payload_, PAYLOAD_BUFSIZE, VERB_ERRORS) < 0) {
-    return false;
+    return PortfolioResult::Unknown;
   }
 
   int num = payload_[0] + (payload_[1] << 8);
-  if (num == 0) {
-    output = "{ \"files\" : [] }";
-    return true;
-  }
-
   char* name = reinterpret_cast<char*>(payload_) + 2;
-  output = "{ \"files\" : [";
+  output = "";
 
   for (int i = 0; i < num; i++) {
     if (i > 0) {
-      output += ',';
+      output += '\n';
     }
-    output += "\"";
     output += name;
-    output += "\"";
-
     name += strlen(name) + 1;
   }
 
-  output += "]}";
-  return true;
+  return PortfolioResult::Ok;
 }
 
-bool PortfolioLink::transmitFile(fs::FS& fs, const String& filename, const char* dest) {
+PortfolioResult PortfolioLink::runUpload(fs::FS& fs, const char* filename, const char* dest, bool overwrite) {
   log_.println("transmitFile begin");
 
   File file = fs.open(filename);
   if (!file) {
-    log_.printf("File not found: %s\n", filename.c_str());
-    return false;
+    log_.printf("File not found: %s\n", filename);
+    return PortfolioResult::Unknown;
   }
 
   size_t len = file.size();
@@ -271,7 +413,7 @@ bool PortfolioLink::transmitFile(fs::FS& fs, const String& filename, const char*
   if (len > 32 * 1024 * 1024) {
     log_.printf("Skipping %s.\n", file.name());
     file.close();
-    return false;
+    return PortfolioResult::Unknown;
   }
 
   file.seek(0, SeekSet);
@@ -285,33 +427,33 @@ bool PortfolioLink::transmitFile(fs::FS& fs, const String& filename, const char*
 
   if (!sendBlock(transmitInit_, sizeof(transmitInit_), VERB_ERRORS)) {
     file.close();
-    return false;
+    return PortfolioResult::Unknown;
   }
 
   if (receiveBlock(controlData_, CONTROL_BUFSIZE, VERB_ERRORS) < 0) {
     file.close();
-    return false;
+    return PortfolioResult::Unknown;
   }
 
   if (controlData_[0] == 0x10) {
     log_.println("Invalid destination file");
     file.close();
-    return false;
+    return PortfolioResult::Unknown;
   }
 
   if (controlData_[0] == 0x20) {
     log_.print("File exists on Portfolio");
-    if (force_) {
+    if (overwrite) {
       log_.println(" and is being overwritten.");
       if (!sendBlock(TRANSMIT_OVERWRITE, sizeof(TRANSMIT_OVERWRITE), VERB_ERRORS)) {
         file.close();
-        return false;
+        return PortfolioResult::Unknown;
       }
     } else {
-      log_.println("! Force overwrite disabled.");
+      log_.println("! Overwrite disabled.");
       sendBlock(TRANSMIT_CANCEL, sizeof(TRANSMIT_CANCEL), VERB_ERRORS);
       file.close();
-      return false;
+      return PortfolioResult::Unknown;
     }
   }
 
@@ -319,14 +461,14 @@ bool PortfolioLink::transmitFile(fs::FS& fs, const String& filename, const char*
   if (blocksize > static_cast<int>(PAYLOAD_BUFSIZE)) {
     log_.println("Payload buffer too small");
     file.close();
-    return false;
+    return PortfolioResult::Unknown;
   }
 
   while (len > static_cast<size_t>(blocksize)) {
     file.readBytes(reinterpret_cast<char*>(payload_), blocksize);
     if (!sendBlock(payload_, blocksize, VERB_COUNTER)) {
       file.close();
-      return false;
+      return PortfolioResult::Unknown;
     }
     len -= blocksize;
   }
@@ -334,20 +476,20 @@ bool PortfolioLink::transmitFile(fs::FS& fs, const String& filename, const char*
   file.readBytes(reinterpret_cast<char*>(payload_), len);
   if (len && !sendBlock(payload_, len, VERB_COUNTER)) {
     file.close();
-    return false;
+    return PortfolioResult::Unknown;
   }
 
   if (receiveBlock(controlData_, CONTROL_BUFSIZE, VERB_ERRORS) < 0) {
     file.close();
-    return false;
+    return PortfolioResult::Unknown;
   }
 
   file.close();
 
   if (controlData_[0] != 0x20) {
-    log_.println("Transmission failed. Possibly disk full or destination directory missing.");
-    return false;
+    log_.println("Transmission failed.");
+    return PortfolioResult::Unknown;
   }
 
-  return true;
+  return PortfolioResult::Ok;
 }

@@ -3,6 +3,10 @@
 
 #include <Arduino.h>
 #include <FS.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
 
 struct PortfolioPins {
   uint8_t outData;
@@ -11,8 +15,37 @@ struct PortfolioPins {
   uint8_t inData;
 };
 
+enum class PortfolioStatus {
+  Disconnected,
+  Connected,
+  Busy
+};
+
+enum class PortfolioResult {
+  Ok,
+  Unknown
+};
+
 class PortfolioLink {
 public:
+  static constexpr size_t PAYLOAD_BUFSIZE = 60000;
+  static constexpr size_t CONTROL_BUFSIZE = 100;
+  static constexpr size_t MAX_FILENAME_LEN = 79;
+
+  explicit PortfolioLink(Print& log = Serial);
+  ~PortfolioLink();
+
+  bool begin(const PortfolioPins& pins);
+
+  PortfolioStatus status() const;
+  PortfolioResult lastResult() const;
+  bool isConnected() const;
+  bool isBusy() const;
+
+  PortfolioResult listFiles(const char* pattern, String& output);
+  PortfolioResult uploadFile(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite);
+
+private:
   enum Verbosity {
     VERB_QUIET = 0,
     VERB_ERRORS,
@@ -20,38 +53,48 @@ public:
     VERB_FLOWCONTROL
   };
 
-  static constexpr size_t PAYLOAD_BUFSIZE = 60000;
-  static constexpr size_t CONTROL_BUFSIZE = 100;
-  static constexpr size_t LIST_BUFSIZE = 2000;
-  static constexpr size_t MAX_FILENAME_LEN = 79;
+  enum class JobType {
+    List,
+    Upload
+  };
 
-  explicit PortfolioLink(Print& log = Serial);
-  ~PortfolioLink();
+  struct Job {
+    JobType type;
+    fs::FS* fs;
+    const char* localPath;
+    const char* pofoPath;
+    bool overwrite;
+    String* listOutput;
+    PortfolioResult result;
+    SemaphoreHandle_t done;
+  };
 
-  bool begin(const PortfolioPins& pins);
-  bool detect();
-  bool listFilesJson(const char* pattern, String& output);
-  bool transmitFile(fs::FS& fs, const String& filename, const char* dest);
+  static void taskThunk(void* arg);
+  void taskLoop();
+  void finishJob(PortfolioResult result);
 
-  void setForce(bool enabled);
-
-private:
   void setupPort();
   void writePort(unsigned char data);
-  void waitClockHigh();
-  void waitClockLow();
+  bool waitClockHigh(uint32_t timeoutUs);
+  bool waitClockLow(uint32_t timeoutUs);
   unsigned char getBit();
-  unsigned char receiveByte();
-  void sendByte(unsigned char data);
+  bool receiveByte(unsigned char& out);
+  bool sendByte(unsigned char data);
   bool sendBlock(const unsigned char* data, unsigned int len, Verbosity verbosity);
   int receiveBlock(unsigned char* data, int maxLen, Verbosity verbosity);
+  bool detectOnce();
+
+  PortfolioResult runList(const char* pattern, String& output);
+  PortfolioResult runUpload(fs::FS& fs, const char* filename, const char* dest, bool overwrite);
 
   Print& log_;
   PortfolioPins pins_{};
-  bool force_ = false;
+  QueueHandle_t jobQueue_ = nullptr;
+  TaskHandle_t task_ = nullptr;
+  volatile PortfolioStatus status_ = PortfolioStatus::Disconnected;
+  volatile PortfolioResult lastResult_ = PortfolioResult::Unknown;
   unsigned char* payload_ = nullptr;
   unsigned char* controlData_ = nullptr;
-  unsigned char* list_ = nullptr;
   unsigned char transmitInit_[90] = {
     0x03, 0x00, 0x70, 0x0C, 0x7A, 0x21, 0x32,
     0, 0, 0, 0

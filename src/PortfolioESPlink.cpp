@@ -20,6 +20,46 @@ File fsUploadFile;
 
 PortfolioLink portfolio(DBG_OUTPUT_PORT);
 
+const char* statusText(PortfolioStatus status) {
+  switch (status) {
+    case PortfolioStatus::Connected:
+      return "connected";
+    case PortfolioStatus::Busy:
+      return "busy";
+    case PortfolioStatus::Disconnected:
+    default:
+      return "disconnected";
+  }
+}
+
+String filesToJson(const String& files) {
+  String output = "{ \"files\" : [";
+  int start = 0;
+  bool first = true;
+
+  while (start < files.length()) {
+    int end = files.indexOf('\n', start);
+    if (end < 0) {
+      end = files.length();
+    }
+
+    if (end > start) {
+      if (!first) {
+        output += ',';
+      }
+      output += "\"";
+      output += files.substring(start, end);
+      output += "\"";
+      first = false;
+    }
+
+    start = end + 1;
+  }
+
+  output += "]}";
+  return output;
+}
+
 String formatBytes(size_t bytes) {
   if (bytes < 1024) {
     return String(bytes) + "B";
@@ -29,23 +69,6 @@ String formatBytes(size_t bytes) {
     return String(bytes / 1024.0 / 1024.0) + "MB";
   }
   return String(bytes / 1024.0 / 1024.0 / 1024.0) + "GB";
-}
-
-String getContentType(String filename) {
-  if (server.hasArg("download")) {
-    return "application/octet-stream";
-  } else if (filename.endsWith(".xml")) {
-    return "text/xml";
-  } else if (filename.endsWith(".exe")) {
-    return "application/x-msdownload";
-  } else if (filename.endsWith(".txt")) {
-    return "text/plain";
-  } else if (filename.endsWith(".zip")) {
-    return "application/x-zip";
-  } else if (filename.endsWith(".gz")) {
-    return "application/x-gzip";
-  }
-  return "application/octet-stream";
 }
 
 void handleFileUpload() {
@@ -80,7 +103,9 @@ void handleFileUpload() {
       DBG_OUTPUT_PORT.print(filename);
       DBG_OUTPUT_PORT.println(" uploaded");
 
-      if (!portfolio.transmitFile(FILESYSTEM, filename, String("C:\\" + upload.filename).c_str())) {
+      bool overwrite = server.hasArg("overwrite");
+      String pofoPath = "C:\\" + upload.filename;
+      if (portfolio.uploadFile(FILESYSTEM, filename.c_str(), pofoPath.c_str(), overwrite) != PortfolioResult::Ok) {
         DBG_OUTPUT_PORT.println("Upload file to Atari failed");
       }
     }
@@ -100,12 +125,21 @@ void handleFileListAtari() {
   String path = server.arg("dir");
   DBG_OUTPUT_PORT.println("handleFileList: " + path);
 
-  String output;
-  if (!portfolio.listFilesJson(path.c_str(), output)) {
+  String files;
+  if (portfolio.listFiles(path.c_str(), files) != PortfolioResult::Ok) {
     server.send(500, "text/plain", "Portfolio list failed");
     return;
   }
 
+  server.send(200, "application/json", filesToJson(files));
+}
+
+void handleStatus() {
+  String output = "{ \"status\" : \"";
+  output += statusText(portfolio.status());
+  output += "\", \"connected\" : ";
+  output += portfolio.isConnected() ? "true" : "false";
+  output += " }";
   server.send(200, "application/json", output);
 }
 
@@ -113,7 +147,7 @@ void setup() {
   DBG_OUTPUT_PORT.begin(115200);
   delay(250);
 
-  DBG_OUTPUT_PORT.printf("PortfolioESPLink 0.2 - (c) 2023 by Petr Kracik\n");
+  DBG_OUTPUT_PORT.printf("PortfolioESPLink 0.3 - (c) 2026 by Petr Kracik\n");
   DBG_OUTPUT_PORT.printf("based on Transfolio 1.0.1 - (c) 2018 by Klaus Peichl\n");
 
   pinMode(LED2, OUTPUT);
@@ -164,23 +198,14 @@ void setup() {
   }, handleFileUpload);
 
   server.on("/listAtari", HTTP_GET, handleFileListAtari);
+  server.on("/status", HTTP_GET, handleStatus);
 
   server.begin();
 }
 
 void loop() {
   server.handleClient();
-
-  DBG_OUTPUT_PORT.print("Waiting for connection");
-  while (!portfolio.detect()) {
-    delay(1);
-    digitalWrite(LED2, 1);
-    digitalWrite(LED3, 0);
-  }
-
-  DBG_OUTPUT_PORT.println("... Connected");
-  digitalWrite(LED2, 0);
-  digitalWrite(LED3, 1);
-
+  digitalWrite(LED2, portfolio.isBusy() ? 1 : 0);
+  digitalWrite(LED3, portfolio.isConnected() ? 1 : 0);
   delay(1);
 }
