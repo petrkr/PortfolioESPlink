@@ -129,6 +129,11 @@ async function deleteESPFile(name) {
   refreshESPFiles();
 }
 
+function atariDirPrefix() {
+  const lastBackslash = lastAtariDir.lastIndexOf("\\");
+  return lastBackslash >= 0 ? lastAtariDir.substring(0, lastBackslash + 1) : "";
+}
+
 async function copySelectedToAtari() {
   if (selectedEsp.size === 0) {
     uploadStatus.textContent = "No ESP32 files selected";
@@ -136,11 +141,13 @@ async function copySelectedToAtari() {
   }
 
   const overwrite = document.getElementById("overwrite").checked ? "&overwrite=1" : "";
+  const destDir = atariDirPrefix();
+  const destParam = destDir ? `&destDir=${encodeURIComponent(destDir)}` : "";
   toAtariBtn.disabled = true;
   try {
     for (const name of selectedEsp) {
       uploadStatus.textContent = `Sending ${name} to Atari...`;
-      const response = await fetch(`/sendToAtari?path=${encodeURIComponent(name)}${overwrite}`, { method: "POST" });
+      const response = await fetch(`/sendToAtari?path=${encodeURIComponent(name)}${overwrite}${destParam}`, { method: "POST" });
       if (response.status !== 202) {
         uploadStatus.textContent = `${name}: ${await response.text()}`;
         break;
@@ -160,8 +167,7 @@ async function copySelectedFromAtari() {
   }
 
   const overwrite = document.getElementById("overwrite").checked ? "&overwrite=1" : "";
-  const lastBackslash = lastAtariDir.lastIndexOf("\\");
-  const dirPrefix = lastBackslash >= 0 ? lastAtariDir.substring(0, lastBackslash + 1) : "";
+  const dirPrefix = atariDirPrefix();
 
   fromAtariBtn.disabled = true;
   try {

@@ -136,8 +136,12 @@ String basenameOf(const String& path) {
   return slash < 0 ? path : path.substring(slash + 1);
 }
 
-bool queueSendToAtari(const String& localPath, bool overwrite) {
-  String pofoPath = "C:\\" + basenameOf(localPath);
+bool queueSendToAtari(const String& localPath, const String& destDir, bool overwrite) {
+  String dir = destDir;
+  if (!dir.endsWith("\\")) {
+    dir += "\\";
+  }
+  String pofoPath = dir + basenameOf(localPath);
   return portfolio.startUpload(FILESYSTEM, localPath.c_str(), pofoPath.c_str(), overwrite);
 }
 
@@ -180,7 +184,8 @@ void handleFileUpload(AsyncWebServerRequest* request,
   }
 
   bool overwrite = request->hasParam("overwrite");
-  if (queueSendToAtari(localPath, overwrite)) {
+  String destDir = request->hasParam("destDir") ? request->getParam("destDir")->value() : "C:\\";
+  if (queueSendToAtari(fsPath, destDir, overwrite)) {
     request->send(202, "text/plain", "Upload queued");
   } else {
     DBG_OUTPUT_PORT.println("Upload job rejected");
@@ -257,13 +262,14 @@ void handleSendToAtari(AsyncWebServerRequest* request) {
     return;
   }
 
-  String path = request->getParam("path")->value();
-  if (!path.startsWith("/")) {
-    path = "/" + path;
+  String relPath = request->getParam("path")->value();
+  if (!relPath.startsWith("/")) {
+    relPath = "/" + relPath;
   }
 
   bool overwrite = request->hasParam("overwrite");
-  if (queueSendToAtari(path, overwrite)) {
+  String destDir = request->hasParam("destDir") ? request->getParam("destDir")->value() : "C:\\";
+  if (queueSendToAtari(String(DATA_DIR) + relPath, destDir, overwrite)) {
     request->send(202, "text/plain", "Upload queued");
   } else {
     request->send(409, "text/plain", "Portfolio busy");
