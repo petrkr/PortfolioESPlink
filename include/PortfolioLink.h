@@ -23,7 +23,8 @@ enum class PortfolioStatus {
 
 enum class PortfolioResult {
   Ok,
-  Unknown
+  Unknown,
+  InvalidPath
 };
 
 enum class PortfolioTransferPhase {
@@ -51,8 +52,8 @@ public:
   bool isBusy() const;
 
   bool startUpload(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite);
+  bool startDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite);
   PortfolioResult listFiles(const char* pattern, String& output);
-  PortfolioResult uploadFile(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite);
 
 private:
   enum Verbosity {
@@ -64,7 +65,8 @@ private:
 
   enum class JobType {
     List,
-    Upload
+    Upload,
+    Download
   };
 
   struct Job {
@@ -74,7 +76,6 @@ private:
     char pofoPath[MAX_FILENAME_LEN + 1];
     bool overwrite;
     String* listOutput;
-    PortfolioResult result;
     PortfolioResult* resultOut;
     SemaphoreHandle_t done;
   };
@@ -96,6 +97,7 @@ private:
 
   PortfolioResult runList(const char* pattern, String& output);
   PortfolioResult runUpload(fs::FS& fs, const char* filename, const char* dest, bool overwrite);
+  PortfolioResult runDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite);
 
   Print& log_;
   PortfolioPins pins_{};
@@ -114,6 +116,9 @@ private:
   };
   unsigned char receiveInit_[82] = {
     0x06, 0x00, 0x70
+  };
+  unsigned char receiveFileInit_[82] = {
+    0x02, 0x00, 0x70
   };
 };
 

@@ -5,6 +5,7 @@
 namespace {
 const unsigned char TRANSMIT_OVERWRITE[3] = {0x05, 0x00, 0x70};
 const unsigned char TRANSMIT_CANCEL[3] = {0x00, 0x00, 0x00};
+const unsigned char RECEIVE_FINISH[3] = {0x20, 0x00, 0x03};
 const uint32_t CLOCK_TIMEOUT_US = 2000000;
 const uint32_t DETECT_TIMEOUT_US = 50000;
 const TickType_t DETECT_INTERVAL = pdMS_TO_TICKS(100);
@@ -86,6 +87,28 @@ bool PortfolioLink::startUpload(fs::FS& fs, const char* localPath, const char* p
   return true;
 }
 
+bool PortfolioLink::startDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return false;
+  }
+
+  Job job{};
+  job.type = JobType::Download;
+  job.fs = &fs;
+  job.overwrite = overwrite;
+  strncpy(job.localPath, localPath, MAX_FILENAME_LEN);
+  strncpy(job.pofoPath, pofoPath, MAX_FILENAME_LEN);
+  job.localPath[MAX_FILENAME_LEN] = '\0';
+  job.pofoPath[MAX_FILENAME_LEN] = '\0';
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE) {
+    status_ = PortfolioStatus::Disconnected;
+    return false;
+  }
+  return true;
+}
+
 PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
   if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
     return PortfolioResult::Unknown;
@@ -98,7 +121,6 @@ PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
   strncpy(job.pofoPath, pattern, MAX_FILENAME_LEN);
   job.pofoPath[MAX_FILENAME_LEN] = '\0';
   job.listOutput = &output;
-  job.result = PortfolioResult::Unknown;
   job.resultOut = &result;
   job.done = xSemaphoreCreateBinary();
 
@@ -118,40 +140,6 @@ PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
   return result;
 }
 
-PortfolioResult PortfolioLink::uploadFile(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite) {
-  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
-    return PortfolioResult::Unknown;
-  }
-
-  PortfolioResult result = PortfolioResult::Unknown;
-
-  Job job{};
-  job.type = JobType::Upload;
-  job.fs = &fs;
-  job.overwrite = overwrite;
-  strncpy(job.localPath, localPath, MAX_FILENAME_LEN);
-  strncpy(job.pofoPath, pofoPath, MAX_FILENAME_LEN);
-  job.localPath[MAX_FILENAME_LEN] = '\0';
-  job.pofoPath[MAX_FILENAME_LEN] = '\0';
-  job.result = PortfolioResult::Unknown;
-  job.resultOut = &result;
-  job.done = xSemaphoreCreateBinary();
-
-  if (!job.done) {
-    return PortfolioResult::Unknown;
-  }
-
-  status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
-    vSemaphoreDelete(job.done);
-    status_ = PortfolioStatus::Disconnected;
-    return PortfolioResult::Unknown;
-  }
-
-  vSemaphoreDelete(job.done);
-  return result;
-}
-
 void PortfolioLink::taskThunk(void* arg) {
   static_cast<PortfolioLink*>(arg)->taskLoop();
 }
@@ -163,17 +151,20 @@ void PortfolioLink::taskLoop() {
   for (;;) {
     Job job{};
     if (xQueueReceive(jobQueue_, &job, 0) == pdTRUE) {
+      PortfolioResult result;
       if (job.type == JobType::List && job.listOutput) {
-        job.result = runList(job.pofoPath, *job.listOutput);
+        result = runList(job.pofoPath, *job.listOutput);
       } else if (job.type == JobType::Upload && job.fs) {
-        job.result = runUpload(*job.fs, job.localPath, job.pofoPath, job.overwrite);
+        result = runUpload(*job.fs, job.localPath, job.pofoPath, job.overwrite);
+      } else if (job.type == JobType::Download && job.fs) {
+        result = runDownload(*job.fs, job.pofoPath, job.localPath, job.overwrite);
       } else {
-        job.result = PortfolioResult::Unknown;
+        result = PortfolioResult::Unknown;
       }
 
-      finishJob(job.result);
+      finishJob(result);
       if (job.resultOut) {
-        *job.resultOut = job.result;
+        *job.resultOut = result;
       }
       if (job.done) {
         xSemaphoreGive(job.done);
@@ -200,7 +191,7 @@ void PortfolioLink::taskLoop() {
 void PortfolioLink::finishJob(PortfolioResult result) {
   lastResult_ = result;
   transferPhase_ = PortfolioTransferPhase::Idle;
-  status_ = result == PortfolioResult::Ok ? PortfolioStatus::Connected : PortfolioStatus::Disconnected;
+  status_ = result == PortfolioResult::Unknown ? PortfolioStatus::Disconnected : PortfolioStatus::Connected;
 }
 
 void PortfolioLink::setupPort() {
@@ -487,9 +478,9 @@ PortfolioResult PortfolioLink::runUpload(fs::FS& fs, const char* filename, const
   }
 
   if (controlData_[0] == 0x10) {
-    log_.println("Invalid destination file");
+    log_.println("Invalid destination file (bad path or disk full)");
     file.close();
-    return PortfolioResult::Unknown;
+    return PortfolioResult::InvalidPath;
   }
 
   if (controlData_[0] == 0x20) {
@@ -545,11 +536,80 @@ PortfolioResult PortfolioLink::runUpload(fs::FS& fs, const char* filename, const
 
   log_.printf("Upload finish response: %02X %02X %02X\n", controlData_[0], controlData_[1], controlData_[2]);
 
+  if (controlData_[0] == 0x10) {
+    log_.println("Invalid destination path (bad path or disk full).");
+    return PortfolioResult::InvalidPath;
+  }
+
   if (controlData_[0] != 0x20) {
     log_.println("Transmission failed.");
     return PortfolioResult::Unknown;
   }
 
   transferDone_ = transferTotal_;
+  return PortfolioResult::Ok;
+}
+
+PortfolioResult PortfolioLink::runDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite) {
+  log_.println("receiveFile begin");
+
+  if (!overwrite && fs.exists(localPath)) {
+    log_.printf("Local file already exists: %s\n", localPath);
+    return PortfolioResult::Unknown;
+  }
+
+  strncpy(reinterpret_cast<char*>(receiveFileInit_) + 3, pofoPath, MAX_FILENAME_LEN);
+  receiveFileInit_[sizeof(receiveFileInit_) - 1] = '\0';
+
+  if (!sendBlock(receiveFileInit_, sizeof(receiveFileInit_), VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (receiveBlock(controlData_, CONTROL_BUFSIZE, VERB_ERRORS) < 0) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (controlData_[0] == 0x10) {
+    log_.println("File not found on Portfolio");
+    return PortfolioResult::InvalidPath;
+  }
+
+  if (controlData_[0] != 0x20) {
+    log_.printf("Unexpected receive response: %02X\n", controlData_[0]);
+    return PortfolioResult::Unknown;
+  }
+
+  size_t total = controlData_[7] | (static_cast<size_t>(controlData_[8]) << 8) |
+                 (static_cast<size_t>(controlData_[9]) << 16) | (static_cast<size_t>(controlData_[10]) << 24);
+
+  log_.printf("receiveFile: File length: %u\n", total);
+
+  File file = fs.open(localPath, FILE_WRITE);
+  if (!file) {
+    log_.printf("Cannot create local file: %s\n", localPath);
+    return PortfolioResult::Unknown;
+  }
+
+  transferPhase_ = PortfolioTransferPhase::PofoUpload;
+  transferDone_ = 0;
+  transferTotal_ = total;
+
+  while (total > 0) {
+    int len = receiveBlock(payload_, PAYLOAD_BUFSIZE, VERB_COUNTER);
+    if (len < 0) {
+      file.close();
+      return PortfolioResult::Unknown;
+    }
+    file.write(payload_, len);
+    total -= len;
+    transferDone_ = transferTotal_ - total;
+  }
+
+  file.close();
+
+  if (!sendBlock(RECEIVE_FINISH, sizeof(RECEIVE_FINISH), VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
   return PortfolioResult::Ok;
 }

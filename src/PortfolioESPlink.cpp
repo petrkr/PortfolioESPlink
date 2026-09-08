@@ -32,6 +32,18 @@ const char* statusText(PortfolioStatus status) {
   }
 }
 
+const char* resultText(PortfolioResult result) {
+  switch (result) {
+    case PortfolioResult::InvalidPath:
+      return "destination rejected (bad path or disk full)";
+    case PortfolioResult::Unknown:
+      return "error";
+    case PortfolioResult::Ok:
+    default:
+      return "";
+  }
+}
+
 const char* phaseText(PortfolioTransferPhase phase) {
   switch (phase) {
     case PortfolioTransferPhase::PofoUpload:
@@ -119,6 +131,16 @@ String formatBytes(size_t bytes) {
   return String(bytes / 1024.0 / 1024.0 / 1024.0) + "GB";
 }
 
+String basenameOf(const String& path) {
+  int slash = path.lastIndexOf('/');
+  return slash < 0 ? path : path.substring(slash + 1);
+}
+
+bool queueSendToAtari(const String& localPath, bool overwrite) {
+  String pofoPath = "C:\\" + basenameOf(localPath);
+  return portfolio.startUpload(FILESYSTEM, localPath.c_str(), pofoPath.c_str(), overwrite);
+}
+
 void handleFileUpload(AsyncWebServerRequest* request,
                       String filename,
                       size_t index,
@@ -152,9 +174,13 @@ void handleFileUpload(AsyncWebServerRequest* request,
   DBG_OUTPUT_PORT.print(localPath);
   DBG_OUTPUT_PORT.println(" uploaded");
 
+  if (!request->hasParam("toAtari")) {
+    request->send(200, "text/plain", "Uploaded to ESP32");
+    return;
+  }
+
   bool overwrite = request->hasParam("overwrite");
-  String pofoPath = "C:\\" + filename;
-  if (portfolio.startUpload(FILESYSTEM, localPath.c_str(), pofoPath.c_str(), overwrite)) {
+  if (queueSendToAtari(localPath, overwrite)) {
     request->send(202, "text/plain", "Upload queued");
   } else {
     DBG_OUTPUT_PORT.println("Upload job rejected");
@@ -191,8 +217,79 @@ void handleStatus(AsyncWebServerRequest* request) {
   output += portfolio.transferDone();
   output += ", \"total\" : ";
   output += portfolio.transferTotal();
-  output += " }";
+  output += ", \"espUsed\" : ";
+  output += FILESYSTEM.usedBytes();
+  output += ", \"espTotal\" : ";
+  output += FILESYSTEM.totalBytes();
+  output += ", \"error\" : \"";
+  output += resultText(portfolio.lastResult());
+  output += "\" }";
   request->send(200, "application/json", output);
+}
+
+void handleDeleteESP32(AsyncWebServerRequest* request) {
+  if (!request->hasParam("path")) {
+    request->send(500, "text/plain", "BAD ARGS");
+    return;
+  }
+
+  String path = request->getParam("path")->value();
+  if (!path.startsWith("/")) {
+    path = "/" + path;
+  }
+
+  if (path.startsWith("/web/") || path == "/web") {
+    request->send(403, "text/plain", "Refusing to delete UI files");
+    return;
+  }
+
+  if (!FILESYSTEM.remove(path)) {
+    request->send(404, "text/plain", "Delete failed");
+    return;
+  }
+
+  request->send(200, "text/plain", "Deleted");
+}
+
+void handleSendToAtari(AsyncWebServerRequest* request) {
+  if (!request->hasParam("path")) {
+    request->send(500, "text/plain", "BAD ARGS");
+    return;
+  }
+
+  String path = request->getParam("path")->value();
+  if (!path.startsWith("/")) {
+    path = "/" + path;
+  }
+
+  bool overwrite = request->hasParam("overwrite");
+  if (queueSendToAtari(path, overwrite)) {
+    request->send(202, "text/plain", "Upload queued");
+  } else {
+    request->send(409, "text/plain", "Portfolio busy");
+  }
+}
+
+void handleDownloadFromAtari(AsyncWebServerRequest* request) {
+  if (!request->hasParam("path")) {
+    request->send(500, "text/plain", "BAD ARGS");
+    return;
+  }
+
+  String pofoPath = request->getParam("path")->value();
+  String basename = pofoPath;
+  int backslash = basename.lastIndexOf('\\');
+  if (backslash >= 0) {
+    basename = basename.substring(backslash + 1);
+  }
+  String localPath = "/" + basename;
+
+  bool overwrite = request->hasParam("overwrite");
+  if (portfolio.startDownload(FILESYSTEM, pofoPath.c_str(), localPath.c_str(), overwrite)) {
+    request->send(202, "text/plain", "Download queued");
+  } else {
+    request->send(409, "text/plain", "Portfolio busy");
+  }
 }
 
 void handleFileListESP32(AsyncWebServerRequest* request) {
@@ -264,6 +361,10 @@ void setup() {
   server.on("/listAtari", HTTP_GET, handleFileListAtari);
   server.on("/listESP32", HTTP_GET, handleFileListESP32);
   server.on("/status", HTTP_GET, handleStatus);
+  server.on("/deleteESP32", HTTP_POST, handleDeleteESP32);
+  server.on("/sendToAtari", HTTP_POST, handleSendToAtari);
+  server.on("/downloadFromAtari", HTTP_POST, handleDownloadFromAtari);
+  server.serveStatic("/files/", FILESYSTEM, "/").setCacheControl("no-store");
   server.serveStatic("/", FILESYSTEM, "/web/").setDefaultFile("index.htm");
 
   server.begin();
