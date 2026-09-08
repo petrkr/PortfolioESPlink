@@ -5,7 +5,8 @@
 namespace {
 const unsigned char TRANSMIT_OVERWRITE[3] = {0x05, 0x00, 0x70};
 const unsigned char TRANSMIT_CANCEL[3] = {0x00, 0x00, 0x00};
-const uint32_t CLOCK_TIMEOUT_US = 250000;
+const uint32_t CLOCK_TIMEOUT_US = 2000000;
+const uint32_t DETECT_TIMEOUT_US = 50000;
 const TickType_t DETECT_INTERVAL = pdMS_TO_TICKS(100);
 const uint8_t DETECT_MISSES_TO_DISCONNECT = 8;
 const TickType_t JOB_WAIT = pdMS_TO_TICKS(30000);
@@ -90,12 +91,15 @@ PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
     return PortfolioResult::Unknown;
   }
 
+  PortfolioResult result = PortfolioResult::Unknown;
+
   Job job{};
   job.type = JobType::List;
   strncpy(job.pofoPath, pattern, MAX_FILENAME_LEN);
   job.pofoPath[MAX_FILENAME_LEN] = '\0';
   job.listOutput = &output;
   job.result = PortfolioResult::Unknown;
+  job.resultOut = &result;
   job.done = xSemaphoreCreateBinary();
 
   if (!job.done) {
@@ -111,13 +115,15 @@ PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
   }
 
   vSemaphoreDelete(job.done);
-  return job.result;
+  return result;
 }
 
 PortfolioResult PortfolioLink::uploadFile(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite) {
   if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
     return PortfolioResult::Unknown;
   }
+
+  PortfolioResult result = PortfolioResult::Unknown;
 
   Job job{};
   job.type = JobType::Upload;
@@ -128,6 +134,7 @@ PortfolioResult PortfolioLink::uploadFile(fs::FS& fs, const char* localPath, con
   job.localPath[MAX_FILENAME_LEN] = '\0';
   job.pofoPath[MAX_FILENAME_LEN] = '\0';
   job.result = PortfolioResult::Unknown;
+  job.resultOut = &result;
   job.done = xSemaphoreCreateBinary();
 
   if (!job.done) {
@@ -142,7 +149,7 @@ PortfolioResult PortfolioLink::uploadFile(fs::FS& fs, const char* localPath, con
   }
 
   vSemaphoreDelete(job.done);
-  return job.result;
+  return result;
 }
 
 void PortfolioLink::taskThunk(void* arg) {
@@ -165,6 +172,9 @@ void PortfolioLink::taskLoop() {
       }
 
       finishJob(job.result);
+      if (job.resultOut) {
+        *job.resultOut = job.result;
+      }
       if (job.done) {
         xSemaphoreGive(job.done);
       }
@@ -229,17 +239,17 @@ unsigned char PortfolioLink::getBit() {
   return digitalRead(pins_.inData);
 }
 
-bool PortfolioLink::receiveByte(unsigned char& out) {
+bool PortfolioLink::receiveByte(unsigned char& out, uint32_t timeoutUs) {
   unsigned char recv = 0;
 
   for (int i = 0; i < 4; i++) {
-    if (!waitClockLow(CLOCK_TIMEOUT_US)) {
+    if (!waitClockLow(timeoutUs)) {
       return false;
     }
     recv = (recv << 1) | getBit();
     writePort(0);
 
-    if (!waitClockHigh(CLOCK_TIMEOUT_US)) {
+    if (!waitClockHigh(timeoutUs)) {
       return false;
     }
     recv = (recv << 1) | getBit();
@@ -284,7 +294,7 @@ bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbo
   }
 
   unsigned char recv = 0;
-  if (!receiveByte(recv) || recv != 'Z') {
+  if (!receiveByte(recv, CLOCK_TIMEOUT_US) || recv != 'Z') {
     if (verbosity >= VERB_ERRORS) {
       log_.println("Portfolio not ready");
     }
@@ -322,9 +332,6 @@ bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbo
     if (verbosity >= VERB_COUNTER && transferTotal_ > 0) {
       transferDone_++;
     }
-    if ((i & 0x3f) == 0x3f) {
-      taskYIELD();
-    }
   }
 
   if (!sendByte(checksum)) {
@@ -335,7 +342,7 @@ bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbo
     log_.println();
   }
 
-  if (!receiveByte(recv) || recv != checksum) {
+  if (!receiveByte(recv, CLOCK_TIMEOUT_US) || recv != checksum) {
     if (verbosity >= VERB_ERRORS) {
       log_.printf("checksum ERR: got %d expected %d\n", recv, checksum);
     }
@@ -353,7 +360,7 @@ int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbo
   }
 
   unsigned char recv = 0;
-  if (!receiveByte(recv) || recv != 0x0a5) {
+  if (!receiveByte(recv, CLOCK_TIMEOUT_US) || recv != 0x0a5) {
     if (verbosity >= VERB_ERRORS) {
       log_.printf("Acknowledge ERROR (received %2X instead of A5)\n", recv);
     }
@@ -362,7 +369,7 @@ int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbo
 
   unsigned char lenL = 0;
   unsigned char lenH = 0;
-  if (!receiveByte(lenL) || !receiveByte(lenH)) {
+  if (!receiveByte(lenL, CLOCK_TIMEOUT_US) || !receiveByte(lenH, CLOCK_TIMEOUT_US)) {
     return -1;
   }
   checksum += lenL;
@@ -377,7 +384,7 @@ int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbo
   }
 
   for (unsigned int i = 0; i < len; i++) {
-    if (!receiveByte(recv)) {
+    if (!receiveByte(recv, CLOCK_TIMEOUT_US)) {
       return -1;
     }
     checksum += recv;
@@ -392,7 +399,7 @@ int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbo
     log_.println();
   }
 
-  if (!receiveByte(recv) || static_cast<unsigned char>(256 - recv) != checksum) {
+  if (!receiveByte(recv, CLOCK_TIMEOUT_US) || static_cast<unsigned char>(256 - recv) != checksum) {
     if (verbosity >= VERB_ERRORS) {
       log_.printf("checksum ERR %d %d\n", static_cast<unsigned char>(256 - recv), checksum);
     }
@@ -409,7 +416,7 @@ int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbo
 
 bool PortfolioLink::detectOnce() {
   unsigned char recv = 0;
-  return receiveByte(recv) && recv == 'Z';
+  return receiveByte(recv, DETECT_TIMEOUT_US) && recv == 'Z';
 }
 
 PortfolioResult PortfolioLink::runList(const char* pattern, String& output) {
@@ -527,6 +534,8 @@ PortfolioResult PortfolioLink::runUpload(fs::FS& fs, const char* filename, const
     return PortfolioResult::Unknown;
   }
 
+  delayMicroseconds(50000);
+
   if (receiveBlock(controlData_, CONTROL_BUFSIZE, VERB_ERRORS) < 0) {
     file.close();
     return PortfolioResult::Unknown;
@@ -534,10 +543,13 @@ PortfolioResult PortfolioLink::runUpload(fs::FS& fs, const char* filename, const
 
   file.close();
 
+  log_.printf("Upload finish response: %02X %02X %02X\n", controlData_[0], controlData_[1], controlData_[2]);
+
   if (controlData_[0] != 0x20) {
     log_.println("Transmission failed.");
     return PortfolioResult::Unknown;
   }
 
+  transferDone_ = transferTotal_;
   return PortfolioResult::Ok;
 }

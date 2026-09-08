@@ -75,6 +75,7 @@ private:
     bool overwrite;
     String* listOutput;
     PortfolioResult result;
+    PortfolioResult* resultOut;
     SemaphoreHandle_t done;
   };
 
@@ -87,7 +88,7 @@ private:
   bool waitClockHigh(uint32_t timeoutUs);
   bool waitClockLow(uint32_t timeoutUs);
   unsigned char getBit();
-  bool receiveByte(unsigned char& out);
+  bool receiveByte(unsigned char& out, uint32_t timeoutUs);
   bool sendByte(unsigned char data);
   bool sendBlock(const unsigned char* data, unsigned int len, Verbosity verbosity);
   int receiveBlock(unsigned char* data, int maxLen, Verbosity verbosity);
