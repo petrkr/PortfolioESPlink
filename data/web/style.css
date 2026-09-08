@@ -1,0 +1,174 @@
+body {
+  margin: 0;
+  background: #f4f4f1;
+  color: #1f2933;
+  font: 16px/1.4 system-ui, sans-serif;
+}
+
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+section {
+  margin-bottom: 24px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+input[type="text"],
+input[name="dir"] {
+  flex: 1;
+  min-width: 0;
+}
+
+input,
+button {
+  font: inherit;
+}
+
+input {
+  padding: 8px;
+}
+
+button {
+  padding: 8px 14px;
+  border: 1px solid #1f2933;
+  background: #1f2933;
+  color: white;
+  cursor: pointer;
+}
+
+.status {
+  padding: 4px 8px;
+  border: 1px solid #9aa4ad;
+  background: white;
+}
+
+.status[data-state="connected"] {
+  border-color: #238636;
+  color: #238636;
+}
+
+.status[data-state="busy"] {
+  border-color: #9a6700;
+  color: #9a6700;
+}
+
+.commander {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.panel {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel h2 {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.transfer-arrows {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+.transfer-arrows button {
+  padding: 8px 12px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.transfer-arrows button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.space {
+  font-weight: normal;
+  color: #52606d;
+  font-size: 14px;
+}
+
+.files {
+  min-height: 220px;
+  padding: 12px;
+  border: 1px solid #c8cdd2;
+  background: white;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: pre;
+}
+
+.file-row span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-row button,
+.file-row .link-btn {
+  padding: 2px 8px;
+  font-size: 13px;
+}
+
+.file-row .link-btn {
+  border: 1px solid #1f2933;
+  background: #1f2933;
+  color: white;
+  text-decoration: none;
+  border-radius: 2px;
+}
+
+.checkbox-spacer {
+  display: inline-block;
+  width: 13px;
+}
+
+.message {
+  min-height: 24px;
+}
+
+.message.error {
+  color: #cf222e;
+}
+
+.progress-label {
+  display: block;
+  margin-top: 10px;
+}
+
+progress {
+  width: 100%;
+  height: 18px;
+}

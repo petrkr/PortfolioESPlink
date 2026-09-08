@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PortfolioESPLink</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>PortfolioESPLink</h1>
+      <span id="status" class="status">Disconnected</span>
+    </header>
+
+    <section>
+      <form id="uploadForm" class="row">
+        <input id="fileInput" name="file" type="file">
+        <label><input id="overwrite" type="checkbox"> overwrite</label>
+        <label><input id="toAtari" type="checkbox"> also send to Atari</label>
+        <button type="submit">Upload</button>
+      </form>
+      <label class="progress-label">Browser to ESP</label>
+      <progress id="espProgress" value="0" max="100"></progress>
+      <label class="progress-label">ESP to Portfolio</label>
+      <progress id="pofoProgress" value="0" max="100"></progress>
+      <div id="uploadStatus" class="message"></div>
+      <div id="transferError" class="message error"></div>
+    </section>
+
+    <div class="commander">
+      <section class="panel">
+        <h2>ESP32 <span id="espSpace" class="space"></span></h2>
+        <div id="espFiles" class="files"></div>
+      </section>
+
+      <div class="transfer-arrows">
+        <button id="toAtariBtn" type="button" title="Send selected to Atari">&rarr;</button>
+        <button id="fromAtariBtn" type="button" title="Download selected from Atari">&larr;</button>
+      </div>
+
+      <section class="panel">
+        <h2>Atari</h2>
+        <form id="listForm" class="row">
+          <input id="atariPath" name="dir" value="A:\*.*" autocomplete="off">
+          <button type="submit">List</button>
+        </form>
+        <div id="atariFiles" class="files"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/script.js"></script>
+</body>
+</html>
