@@ -536,7 +536,7 @@ PortfolioResult PortfolioLink::runRaw(const uint8_t* data, size_t len, String& r
 }
 
 PortfolioResult PortfolioLink::runHello(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities) {
-  log_.println("Probing for PFDAEMON (HELLO)");
+  log_.println("Probing for PFTD (HELLO)");
 
   unsigned char request[RAW_BUFSIZE] = {0};
   request[0] = 0x80;
