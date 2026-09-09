@@ -493,6 +493,11 @@ void setup() {
   DBG_OUTPUT_PORT.print("Connected! IP address: ");
   DBG_OUTPUT_PORT.println(WiFi.localIP());
 
+  // UTC, no DST - used to timestamp files uploaded to the Portfolio (see
+  // PortfolioLink::runUpload). Uses the ESP32 core's built-in SNTP client
+  // (configTime), no extra library.
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
   server.on("/upload", HTTP_POST, [](AsyncWebServerRequest* request) {}, handleFileUpload);
