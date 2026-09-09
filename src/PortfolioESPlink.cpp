@@ -12,8 +12,8 @@
 #define FILESYSTEM LittleFS
 #define DATA_DIR "/data"
 
-const char* ssid = "IoT";
-const char* password = "octopus19";
+const char* ssid = "";
+const char* password = "";
 const char* host = "portfolioesplink";
 
 AsyncWebServer server(80);
@@ -447,6 +447,30 @@ void handleHello(AsyncWebServerRequest* request) {
   request->send(200, "application/json", output);
 }
 
+void handleDrives(AsyncWebServerRequest* request) {
+  uint8_t driveCount = 0;
+
+  PortfolioResult result = portfolio.listDrives(driveCount);
+  if (result != PortfolioResult::Ok) {
+    request->send(500, "text/plain", "drives failed: " + String(resultText(result)));
+    return;
+  }
+
+  String output = "{ \"driveCount\" : ";
+  output += driveCount;
+  output += ", \"drives\" : [";
+  for (uint8_t i = 0; i < driveCount; i++) {
+    if (i > 0) {
+      output += ',';
+    }
+    output += "\"";
+    output += static_cast<char>('A' + i);
+    output += "\"";
+  }
+  output += "] }";
+  request->send(200, "application/json", output);
+}
+
 void handleFileListESP32(AsyncWebServerRequest* request) {
   String dir = "/";
   if (request->hasParam("dir")) {
@@ -531,6 +555,7 @@ void setup() {
   server.on("/downloadFromAtari", HTTP_POST, handleDownloadFromAtari);
   server.on("/sendRaw", HTTP_POST, handleSendRaw);
   server.on("/hello", HTTP_GET, handleHello);
+  server.on("/drives", HTTP_GET, handleDrives);
   server.serveStatic("/files/", FILESYSTEM, DATA_DIR "/").setCacheControl("no-store");
   server.serveStatic("/", FILESYSTEM, "/web/").setDefaultFile("index.htm");
 

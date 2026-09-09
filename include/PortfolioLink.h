@@ -62,6 +62,7 @@ public:
   PortfolioResult listFilesExtended(const char* pattern, String& output, uint32_t& freeBytes, uint32_t& totalBytes);
   PortfolioResult sendRaw(const uint8_t* data, size_t len, String& response);
   PortfolioResult helloDaemon(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities);
+  PortfolioResult listDrives(uint8_t& driveCount);
 
 private:
   enum Verbosity {
@@ -77,7 +78,8 @@ private:
     Upload,
     Download,
     Raw,
-    Hello
+    Hello,
+    Drives
   };
 
   static constexpr size_t RAW_BUFSIZE = 90;
@@ -100,6 +102,7 @@ private:
     uint8_t* helloCapabilities;
     uint32_t* listFreeBytes;
     uint32_t* listTotalBytes;
+    uint8_t* driveCount;
   };
 
   static void taskThunk(void* arg);
@@ -123,6 +126,7 @@ private:
   PortfolioResult runDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite);
   PortfolioResult runRaw(const uint8_t* data, size_t len, String& response);
   PortfolioResult runHello(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities);
+  PortfolioResult runDrives(uint8_t& driveCount);
 
   Print& log_;
   PortfolioPins pins_{};

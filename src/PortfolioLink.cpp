@@ -279,6 +279,35 @@ PortfolioResult PortfolioLink::helloDaemon(bool& present, uint32_t& buildId, uin
   return result;
 }
 
+PortfolioResult PortfolioLink::listDrives(uint8_t& driveCount) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  PortfolioResult result = PortfolioResult::Unknown;
+  driveCount = 0;
+
+  Job job{};
+  job.type = JobType::Drives;
+  job.resultOut = &result;
+  job.driveCount = &driveCount;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return result;
+}
+
 void PortfolioLink::taskThunk(void* arg) {
   static_cast<PortfolioLink*>(arg)->taskLoop();
 }
@@ -303,6 +332,8 @@ void PortfolioLink::taskLoop() {
         result = runRaw(job.rawData, job.rawLen, *job.rawResponse);
       } else if (job.type == JobType::Hello && job.helloPresent) {
         result = runHello(*job.helloPresent, *job.helloBuildId, *job.helloVersion, *job.helloCapabilities);
+      } else if (job.type == JobType::Drives && job.driveCount) {
+        result = runDrives(*job.driveCount);
       } else {
         result = PortfolioResult::Unknown;
       }
@@ -735,6 +766,25 @@ PortfolioResult PortfolioLink::runHello(bool& present, uint32_t& buildId, uint8_
             (static_cast<uint32_t>(payload_[6]) << 16) | (static_cast<uint32_t>(payload_[7]) << 24);
   version = payload_[8];
   capabilities = payload_[9];
+  return PortfolioResult::Ok;
+}
+
+PortfolioResult PortfolioLink::runDrives(uint8_t& driveCount) {
+  log_.println("Probing for drive count (DRIVES)");
+
+  unsigned char request[RAW_BUFSIZE] = {0};
+  request[0] = 0x87;
+
+  if (!sendBlock(request, sizeof(request), VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
+  int received = receiveBlock(payload_, PAYLOAD_BUFSIZE, VERB_ERRORS);
+  if (received < 1) {
+    return PortfolioResult::Unknown;
+  }
+
+  driveCount = payload_[0];
   return PortfolioResult::Ok;
 }
 
