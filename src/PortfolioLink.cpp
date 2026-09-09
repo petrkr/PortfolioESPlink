@@ -178,12 +178,14 @@ PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
   return result;
 }
 
-PortfolioResult PortfolioLink::listFilesExtended(const char* pattern, String& output) {
+PortfolioResult PortfolioLink::listFilesExtended(const char* pattern, String& output, uint32_t& freeBytes, uint32_t& totalBytes) {
   if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
     return PortfolioResult::Unknown;
   }
 
   PortfolioResult result = PortfolioResult::Unknown;
+  freeBytes = 0;
+  totalBytes = 0;
 
   Job job{};
   job.type = JobType::ListExt;
@@ -191,6 +193,8 @@ PortfolioResult PortfolioLink::listFilesExtended(const char* pattern, String& ou
   job.pofoPath[MAX_FILENAME_LEN] = '\0';
   job.listOutput = &output;
   job.resultOut = &result;
+  job.listFreeBytes = &freeBytes;
+  job.listTotalBytes = &totalBytes;
   job.done = xSemaphoreCreateBinary();
 
   if (!job.done) {
@@ -290,7 +294,7 @@ void PortfolioLink::taskLoop() {
       if (job.type == JobType::List && job.listOutput) {
         result = runList(job.pofoPath, *job.listOutput);
       } else if (job.type == JobType::ListExt && job.listOutput) {
-        result = runListExt(job.pofoPath, *job.listOutput);
+        result = runListExt(job.pofoPath, *job.listOutput, *job.listFreeBytes, *job.listTotalBytes);
       } else if (job.type == JobType::Upload && job.fs) {
         result = runUpload(*job.fs, job.localPath, job.pofoPath, job.overwrite);
       } else if (job.type == JobType::Download && job.fs) {
@@ -602,7 +606,7 @@ PortfolioResult PortfolioLink::runList(const char* pattern, String& output) {
   return PortfolioResult::Ok;
 }
 
-PortfolioResult PortfolioLink::runListExt(const char* pattern, String& output) {
+PortfolioResult PortfolioLink::runListExt(const char* pattern, String& output, uint32_t& freeBytes, uint32_t& totalBytes) {
   log_.printf("Fetching extended directory listing for %s\n", pattern);
 
   unsigned char request[RAW_BUFSIZE] = {0};
@@ -666,6 +670,19 @@ PortfolioResult PortfolioLink::runListExt(const char* pattern, String& output) {
     output += stamp;
     output += ',';
     output += name;
+  }
+
+  // Free/total drive space (8 bytes: free(4B LE) + total(4B LE)) follow
+  // unconditionally after the last entry - see list.inc's response
+  // layout comment. Not present if the Portfolio-side PFTD build predates
+  // this addition (older BUILD_ID) - guard against a short response.
+  freeBytes = 0;
+  totalBytes = 0;
+  if (pos + 8 <= static_cast<size_t>(received)) {
+    freeBytes = static_cast<uint32_t>(payload_[pos]) | (static_cast<uint32_t>(payload_[pos + 1]) << 8) |
+                (static_cast<uint32_t>(payload_[pos + 2]) << 16) | (static_cast<uint32_t>(payload_[pos + 3]) << 24);
+    totalBytes = static_cast<uint32_t>(payload_[pos + 4]) | (static_cast<uint32_t>(payload_[pos + 5]) << 8) |
+                 (static_cast<uint32_t>(payload_[pos + 6]) << 16) | (static_cast<uint32_t>(payload_[pos + 7]) << 24);
   }
 
   return PortfolioResult::Ok;

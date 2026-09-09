@@ -59,7 +59,7 @@ public:
   bool startUpload(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite);
   bool startDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite);
   PortfolioResult listFiles(const char* pattern, String& output);
-  PortfolioResult listFilesExtended(const char* pattern, String& output);
+  PortfolioResult listFilesExtended(const char* pattern, String& output, uint32_t& freeBytes, uint32_t& totalBytes);
   PortfolioResult sendRaw(const uint8_t* data, size_t len, String& response);
   PortfolioResult helloDaemon(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities);
 
@@ -98,6 +98,8 @@ private:
     uint32_t* helloBuildId;
     uint8_t* helloVersion;
     uint8_t* helloCapabilities;
+    uint32_t* listFreeBytes;
+    uint32_t* listTotalBytes;
   };
 
   static void taskThunk(void* arg);
@@ -116,7 +118,7 @@ private:
   bool detectOnce();
 
   PortfolioResult runList(const char* pattern, String& output);
-  PortfolioResult runListExt(const char* pattern, String& output);
+  PortfolioResult runListExt(const char* pattern, String& output, uint32_t& freeBytes, uint32_t& totalBytes);
   PortfolioResult runUpload(fs::FS& fs, const char* filename, const char* dest, bool overwrite);
   PortfolioResult runDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite);
   PortfolioResult runRaw(const uint8_t* data, size_t len, String& response);
