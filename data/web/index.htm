@@ -10,27 +10,38 @@
   <main>
     <header>
       <h1>PortfolioESPLink</h1>
-      <span id="status" class="status">Disconnected</span>
+      <button id="statusBadge" class="status-badge" type="button" aria-expanded="false" aria-controls="statusPopover">
+        <span id="status" class="status">Disconnected</span>
+        <span id="pftdStatus" class="status pftd-badge"></span>
+      </button>
     </header>
 
-    <section>
-      <form id="uploadForm" class="row">
-        <input id="fileInput" name="file" type="file">
-        <label><input id="overwrite" type="checkbox"> overwrite</label>
-        <label><input id="toAtari" type="checkbox"> also send to Atari</label>
-        <button type="submit">Upload</button>
-      </form>
+    <div id="statusPopover" class="popover" hidden>
+      <div class="popover-row">
+        <span class="popover-label">ESP32 space</span>
+        <span id="espSpace" class="space"></span>
+      </div>
       <label class="progress-label">Browser to ESP</label>
       <progress id="espProgress" value="0" max="100"></progress>
       <label class="progress-label">ESP to Portfolio</label>
       <progress id="pofoProgress" value="0" max="100"></progress>
-      <div id="uploadStatus" class="message"></div>
-      <div id="transferError" class="message error"></div>
+      <div id="uploadStatus" class="message" aria-live="polite"></div>
+      <div id="transferError" class="message error" aria-live="polite"></div>
+    </div>
+
+    <section>
+      <form id="uploadForm" class="row dropzone">
+        <input id="fileInput" name="file" type="file">
+        <label><input id="overwrite" type="checkbox"> overwrite</label>
+        <label><input id="toAtari" type="checkbox"> also send to Atari</label>
+        <button type="submit">Upload</button>
+        <span class="dropzone-hint">or drag a file here</span>
+      </form>
     </section>
 
     <div class="commander">
       <section class="panel">
-        <h2>ESP32 <span id="espSpace" class="space"></span></h2>
+        <h2>ESP32 <button id="espUpBtn" type="button" title="Up one directory" disabled>&uarr;</button></h2>
         <div id="espFiles" class="files"></div>
       </section>
 
@@ -40,19 +51,15 @@
       </div>
 
       <section class="panel">
-        <h2>Atari</h2>
+        <h2>Atari <span id="atariSpace" class="space"></span></h2>
         <form id="listForm" class="row">
-          <input id="atariPath" name="dir" value="A:\*.*" autocomplete="off">
+          <button id="atariUpBtn" type="button" title="Up one directory" disabled>&uarr;</button>
+          <input id="atariPath" name="dir" value="C:\*.*" autocomplete="off">
           <button type="submit">List</button>
         </form>
         <div id="atariFiles" class="files"></div>
       </section>
     </div>
-
-    <section>
-      <h2>PFTD <button id="helloBtn" type="button">Check</button></h2>
-      <div id="helloStatus" class="message"></div>
-    </section>
   </main>
 
   <script src="/script.js"></script>
