@@ -66,7 +66,16 @@ saved_dx  dw 0
 payload0  db 0        ; captured payload[0] byte, read out safely below
 
 %include "hello.inc"
+%include "list.inc"
 %include "residentcheck.inc"
+
+; list_src_ds/list_src_si: copy of saved_ds/saved_dx taken at the same
+; time payload0 is read, handed to dispatch_list so it can pull more
+; than one byte (the ASCIIZ pattern) out of the foreign receive buffer -
+; see list.inc's dispatch_list header comment for why HELLO doesn't need
+; this but LIST does.
+list_src_ds dw 0
+list_src_si dw 0
 
 ; --- new int 0x61 handler ---
 ; CPU already pushed FLAGS, CS, IP of the caller. We NEVER call the
@@ -103,7 +112,20 @@ pftd_int61_handler:
                                          ; foreign segment again
         mov     [cs:payload0], al
 
+        ; stash the same DS:DX pair for dispatch_list, which (unlike
+        ; dispatch_hello) needs more than just payload[0] out of the
+        ; foreign buffer - see list.inc. This clobbers AX/AL, so AL
+        ; (payload[0]) is reloaded from payload0 below before either
+        ; dispatcher runs - both require AL = payload[0] on entry.
+        mov     ax, [cs:saved_ds]
+        mov     [cs:list_src_ds], ax
+        mov     ax, [cs:saved_dx]
+        mov     [cs:list_src_si], ax
+
+        mov     al, [cs:payload0]
         call    dispatch_hello
+        mov     al, [cs:payload0]
+        call    dispatch_list
 
 .no_pending:
         pop     ds

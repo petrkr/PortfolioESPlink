@@ -18,18 +18,25 @@
 ;                          then an extended version number and everything
 ;                          from there on is redefined per that version,
 ;                          capabilities included)
-;   offset 9    capabilities bitmask (0x00 in v1 - nothing beyond HELLO yet)
+;   offset 9    capabilities bitmask - see CAP_* constants below
 ;   offset 10-11 reserved (0x00, 0x00)
+;
+; Capabilities bitmask (offset 9): defined here (not in the .inc file of
+; the command each bit describes) since this is the one place a client
+; can discover them all at once, before knowing which other commands
+; exist.
+;   bit 0  CAP_LIST_EXT - LIST extended (0x86, see list.inc) supported
 
 %include "version.inc"
 
 HELLO_CMD equ 0x80
+CAP_LIST_EXT equ 0x01
 
 hello_response:
         db      'PFD1'          ; magic
         dd      BUILD_ID        ; build id / dev snapshot marker
         db      VERSION
-        db      0x00            ; capabilities (none yet)
+        db      CAP_LIST_EXT    ; capabilities - see list.inc
         db      0x00, 0x00      ; reserved
 hello_response_len equ $ - hello_response
 
