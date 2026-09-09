@@ -253,6 +253,10 @@ uploadForm.addEventListener("submit", async (event) => {
   }
   if (document.getElementById("toAtari").checked) {
     params.set("toAtari", "1");
+    const destDir = atariDirPrefix();
+    if (destDir) {
+      params.set("destDir", destDir);
+    }
   }
   const query = params.toString() ? `?${params.toString()}` : "";
 
