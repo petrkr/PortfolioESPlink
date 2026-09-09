@@ -25,7 +25,7 @@
 
 HELLO_CMD equ 0x80
 
-BUILD_ID  equ 0xFFFF0001       ; dev snapshot marker, see header comment above
+BUILD_ID  equ 0xFFFF0002       ; dev snapshot marker, see header comment above
 
 hello_response:
         db      'PFD1'          ; magic
@@ -36,8 +36,9 @@ hello_response:
 hello_response_len equ $ - hello_response
 
 ; dispatch_hello: called from pftd_int61_handler with AL = payload[0],
-; CS=DS. Falls through (no jump) if the command isn't ours - caller
-; continues to .no_pending right after this include. Answers over the
+; CS=DS. Returns (ret) either way - caller must treat this as a normal
+; subroutine call, never fall into it via %include placement, or the
+; missing ret unbalances the stack on every HELLO hit. Answers over the
 ; smart cable using the same AH=0x30 API the ROM itself uses - see
 ; PFTD.asm header comment for why this is safe to do from inside the
 ; int 0x61 hook.
@@ -53,3 +54,4 @@ dispatch_hello:
         int     0x61
         ; DL = error code on return (ignored here)
 .not_hello:
+        ret
