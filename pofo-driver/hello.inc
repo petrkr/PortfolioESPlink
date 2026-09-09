@@ -26,17 +26,19 @@
 ; can discover them all at once, before knowing which other commands
 ; exist.
 ;   bit 0  CAP_LIST_EXT - LIST extended (0x86, see list.inc) supported
+;   bit 1  CAP_DRIVES   - DRIVES (0x87, see drives.inc) supported
 
 %include "version.inc"
 
 HELLO_CMD equ 0x80
 CAP_LIST_EXT equ 0x01
+CAP_DRIVES equ 0x02
 
 hello_response:
         db      'PFD1'          ; magic
         dd      BUILD_ID        ; build id / dev snapshot marker
         db      VERSION
-        db      CAP_LIST_EXT    ; capabilities - see list.inc
+        db      CAP_LIST_EXT | CAP_DRIVES ; capabilities - see list.inc/drives.inc
         db      0x00, 0x00      ; reserved
 hello_response_len equ $ - hello_response
 

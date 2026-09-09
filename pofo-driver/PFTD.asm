@@ -67,6 +67,7 @@ payload0  db 0        ; captured payload[0] byte, read out safely below
 
 %include "hello.inc"
 %include "list.inc"
+%include "drives.inc"
 %include "residentcheck.inc"
 
 ; list_src_ds/list_src_si: copy of saved_ds/saved_dx taken at the same
@@ -126,6 +127,8 @@ pftd_int61_handler:
         call    dispatch_hello
         mov     al, [cs:payload0]
         call    dispatch_list
+        mov     al, [cs:payload0]
+        call    dispatch_drives
 
 .no_pending:
         pop     ds
