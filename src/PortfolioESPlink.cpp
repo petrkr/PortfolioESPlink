@@ -219,8 +219,12 @@ void handleFileListAtari(AsyncWebServerRequest* request) {
 // the Portfolio - see /hello capabilities). Each entry line from
 // PortfolioLink::listFilesExtended is "D|F,size,YYYY-MM-DD HH:MM:SS,name" -
 // split into JSON objects, same shape as espFilesToJson's "items" array.
-String atariExtFilesToJson(const String& entries) {
-  String output = "{ \"items\" : [";
+String atariExtFilesToJson(const String& entries, uint32_t freeBytes, uint32_t totalBytes) {
+  String output = "{ \"freeBytes\" : ";
+  output += freeBytes;
+  output += ", \"totalBytes\" : ";
+  output += totalBytes;
+  output += ", \"items\" : [";
   int start = 0;
   bool first = true;
 
@@ -267,12 +271,14 @@ void handleFileListAtariExt(AsyncWebServerRequest* request) {
   DBG_OUTPUT_PORT.println("handleFileListExt: " + path);
 
   String entries;
-  if (portfolio.listFilesExtended(path.c_str(), entries) != PortfolioResult::Ok) {
+  uint32_t freeBytes = 0;
+  uint32_t totalBytes = 0;
+  if (portfolio.listFilesExtended(path.c_str(), entries, freeBytes, totalBytes) != PortfolioResult::Ok) {
     request->send(500, "text/plain", "Portfolio extended list failed");
     return;
   }
 
-  request->send(200, "application/json", atariExtFilesToJson(entries));
+  request->send(200, "application/json", atariExtFilesToJson(entries, freeBytes, totalBytes));
 }
 
 void handleStatus(AsyncWebServerRequest* request) {
