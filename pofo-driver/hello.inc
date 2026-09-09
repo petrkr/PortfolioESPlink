@@ -36,13 +36,25 @@ hello_response_len equ $ - hello_response
 ; dispatch_hello: called from pftd_int61_handler with AL = payload[0],
 ; CS=DS. Returns (ret) either way - caller must treat this as a normal
 ; subroutine call, never fall into it via %include placement, or the
-; missing ret unbalances the stack on every HELLO hit. Answers over the
-; smart cable using the same AH=0x30 API the ROM itself uses - see
-; PFTD.asm header comment for why this is safe to do from inside the
-; int 0x61 hook.
+; missing ret unbalances the stack on every HELLO hit. Preserves
+; AX/CX/DX/DS - pftd_int61_handler's .chain forwards whatever's in those
+; registers straight to old61 (the real ROM on real hardware), so this
+; must not leak the transmit call's own DX=hello_response/CX=
+; hello_response_len into that forwarded call. (Found via TESTHELLO in
+; DOSBox: a stray second "transmit" appeared downstream, made of leftover
+; register bytes from here rather than a real second call - see
+; dosbox-test/ - the caller wasn't clobbering CX/DX either, so both sides
+; needed the same discipline.) Answers over the smart cable using the
+; same AH=0x30 API the ROM itself uses - see PFTD.asm header comment for
+; why this is safe to do from inside the int 0x61 hook.
 dispatch_hello:
         cmp     al, HELLO_CMD
         jne     .not_hello
+
+        push    ax
+        push    cx
+        push    dx
+        push    ds
 
         push    cs
         pop     ds
@@ -51,5 +63,10 @@ dispatch_hello:
         mov     ax, 0x3000              ; AH=0x30 AL=0 = transmit block
         int     0x61
         ; DL = error code on return (ignored here)
+
+        pop     ds
+        pop     dx
+        pop     cx
+        pop     ax
 .not_hello:
         ret
