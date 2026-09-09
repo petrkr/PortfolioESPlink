@@ -11,11 +11,9 @@
 ;
 ; HELLO response layout (fixed 12 bytes):
 ;   offset 0-3  magic "PFD1"
-;   offset 4-7  build id (4 bytes, binary). Until this driver is actually
-;               committed, this is a manually-assigned dev snapshot marker
-;               in the FFFF00xx range (FFFF0001, FFFF0002, ...) so it can't
-;               be mistaken for a real git short-hash. Once committed, this
-;               becomes the 4-byte binary form of the git short hash.
+;   offset 4-7  build id (4 bytes, binary). VERSION/BUILD_ID come from
+;               version.inc - see that file for how the build id is
+;               assigned before vs. after this driver is committed.
 ;   offset 8    version   (1 = this format; 0xFF = extended - offset 9 is
 ;                          then an extended version number and everything
 ;                          from there on is redefined per that version,
@@ -23,14 +21,14 @@
 ;   offset 9    capabilities bitmask (0x00 in v1 - nothing beyond HELLO yet)
 ;   offset 10-11 reserved (0x00, 0x00)
 
-HELLO_CMD equ 0x80
+%include "version.inc"
 
-BUILD_ID  equ 0xFFFF0002       ; dev snapshot marker, see header comment above
+HELLO_CMD equ 0x80
 
 hello_response:
         db      'PFD1'          ; magic
         dd      BUILD_ID        ; build id / dev snapshot marker
-        db      1               ; version 1
+        db      VERSION
         db      0x00            ; capabilities (none yet)
         db      0x00, 0x00      ; reserved
 hello_response_len equ $ - hello_response
