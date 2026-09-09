@@ -104,6 +104,21 @@ resident_end:
 %include "hexprint.inc"
 
 install:
+        mov     dx, msg_pftd_v
+        mov     ah, 0x09
+        int     0x21
+
+        mov     al, VERSION
+        call    print_dec8
+
+        mov     dx, msg_build_open
+        mov     ah, 0x09
+        int     0x21
+
+        mov     dx, (BUILD_ID >> 16) & 0xFFFF
+        mov     ax, BUILD_ID & 0xFFFF
+        call    print_hex32
+
         mov     dx, msg_installing
         mov     ah, 0x09
         int     0x21
@@ -119,19 +134,8 @@ install:
         int     0x21
         pop     ds
 
-        mov     dx, msg_ok
+        mov     dx, msg_installed
         mov     ah, 0x09
-        int     0x21
-
-        mov     dx, (BUILD_ID >> 16) & 0xFFFF
-        mov     ax, BUILD_ID & 0xFFFF
-        call    print_hex32
-
-        mov     dl, 13
-        mov     ah, 0x02
-        int     0x21
-        mov     dl, 10
-        mov     ah, 0x02
         int     0x21
 
         mov     dx, resident_end
@@ -141,5 +145,7 @@ install:
         mov     ax, 0x3100
         int     0x21
 
-msg_installing db 'PFTD v1 - installing...', 13, 10, '$'
-msg_ok         db 'Resident. Build $'
+msg_pftd_v      db 'PFTD v$'
+msg_build_open  db ' ($'
+msg_installing  db ') - Installing...', 13, 10, '$'
+msg_installed   db 'Installed', 13, 10, '$'
