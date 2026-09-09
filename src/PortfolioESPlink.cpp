@@ -292,7 +292,21 @@ void handleStatus(AsyncWebServerRequest* request) {
   output += FILESYSTEM.totalBytes();
   output += ", \"error\" : \"";
   output += resultText(portfolio.lastResult());
-  output += "\" }";
+  output += "\", \"pftd\" : ";
+  if (portfolio.hasPFTD()) {
+    char buildIdHex[9];
+    snprintf(buildIdHex, sizeof(buildIdHex), "%08X", portfolio.pftdBuildId());
+    output += "{ \"buildId\" : \"";
+    output += buildIdHex;
+    output += "\", \"version\" : ";
+    output += portfolio.pftdVersion();
+    output += ", \"capabilities\" : ";
+    output += portfolio.pftdCapabilities();
+    output += " }";
+  } else {
+    output += "null";
+  }
+  output += " }";
   request->send(200, "application/json", output);
 }
 

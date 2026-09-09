@@ -51,6 +51,10 @@ public:
   size_t transferTotal() const;
   bool isConnected() const;
   bool isBusy() const;
+  bool hasPFTD() const;
+  uint32_t pftdBuildId() const;
+  uint8_t pftdVersion() const;
+  uint8_t pftdCapabilities() const;
 
   bool startUpload(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite);
   bool startDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite);
@@ -127,6 +131,10 @@ private:
   volatile PortfolioTransferPhase transferPhase_ = PortfolioTransferPhase::Idle;
   volatile size_t transferDone_ = 0;
   volatile size_t transferTotal_ = 0;
+  volatile bool hasPFTD_ = false;
+  volatile uint32_t pftdBuildId_ = 0;
+  volatile uint8_t pftdVersion_ = 0;
+  volatile uint8_t pftdCapabilities_ = 0;
   unsigned char* payload_ = nullptr;
   unsigned char* controlData_ = nullptr;
   // offset 3-6 (time, then date - DOS packed format) is overwritten with

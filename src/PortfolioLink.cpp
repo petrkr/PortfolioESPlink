@@ -87,6 +87,22 @@ bool PortfolioLink::isBusy() const {
   return status_ == PortfolioStatus::Busy;
 }
 
+bool PortfolioLink::hasPFTD() const {
+  return hasPFTD_;
+}
+
+uint32_t PortfolioLink::pftdBuildId() const {
+  return pftdBuildId_;
+}
+
+uint8_t PortfolioLink::pftdVersion() const {
+  return pftdVersion_;
+}
+
+uint8_t PortfolioLink::pftdCapabilities() const {
+  return pftdCapabilities_;
+}
+
 bool PortfolioLink::startUpload(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite) {
   if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
     return false;
@@ -301,12 +317,30 @@ void PortfolioLink::taskLoop() {
     if (now - lastDetect >= DETECT_INTERVAL) {
       lastDetect = now;
       if (detectOnce()) {
+        bool wasDisconnected = status_ != PortfolioStatus::Connected;
         misses = 0;
         status_ = PortfolioStatus::Connected;
+
+        // Just transitioned disconnected -> connected: probe once for
+        // PFTD so hasPFTD()/pftd*() are ready by the time anything asks,
+        // without the caller ever having to issue an explicit HELLO.
+        if (wasDisconnected) {
+          bool present = false;
+          uint32_t buildId = 0;
+          uint8_t version = 0;
+          uint8_t capabilities = 0;
+          runHello(present, buildId, version, capabilities);
+          hasPFTD_ = present;
+          pftdBuildId_ = buildId;
+          pftdVersion_ = version;
+          pftdCapabilities_ = capabilities;
+          status_ = PortfolioStatus::Connected;
+        }
       } else if (misses < DETECT_MISSES_TO_DISCONNECT) {
         misses++;
       } else {
         status_ = PortfolioStatus::Disconnected;
+        hasPFTD_ = false;
       }
     }
     vTaskDelay(pdMS_TO_TICKS(10));
