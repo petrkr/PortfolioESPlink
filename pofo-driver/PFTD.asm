@@ -40,10 +40,21 @@
 ; Usage:
 ;   PFTD                 <- install (stays resident)
 ;
-; Assemble: nasm -f bin PFTD.asm -o PFTD.COM
+; Assemble (real Portfolio):  nasm -f bin PFTD.asm -o PFTD.COM
+; Assemble (DOSBox/testing):  nasm -f bin -dCHECK_POFO=0 PFTD.asm -o PFTD.COM
+;   (skips the is_pofo hardware check - DOSBox's port 0x61 doesn't echo
+;   back 0x61 like a real Portfolio does, so the check would always fail
+;   there. Never ship a CHECK_POFO=0 build to real hardware.)
 
 CPU 8086
 ORG 0x100
+
+; Set to 0 to skip the is_pofo hardware check at install time (see
+; pofodetect.inc) - useful for testing in DOSBox or other emulators that
+; don't echo port 0x61 back as 0x61. Leave at 1 for real builds.
+%ifndef CHECK_POFO
+CHECK_POFO equ 1
+%endif
 
 start:
         jmp     install
@@ -55,11 +66,23 @@ saved_dx  dw 0
 payload0  db 0        ; captured payload[0] byte, read out safely below
 
 %include "hello.inc"
+%include "residentcheck.inc"
 
 ; --- new int 0x61 handler ---
 ; CPU already pushed FLAGS, CS, IP of the caller. We NEVER call the
 ; original as a subroutine - always inspect-then-JMP.
 pftd_int61_handler:
+        ; Must run before anything is pushed: check_already_resident
+        ; returns via RET (stack still just has FLAGS/CS/IP from the
+        ; int 0x61 itself underneath), and if it answered the probe we
+        ; IRET immediately, right here, before pushing anything else -
+        ; that stack shape is exactly what IRET expects.
+        call    check_already_resident
+        cmp     ax, PROBE_ANSWER
+        jne     .not_probe
+        iret
+.not_probe:
+
         push    ax
         push    bx
         push    si
@@ -102,8 +125,49 @@ resident_end:
 
 ; ---- installer ----
 %include "hexprint.inc"
+%include "pofodetect.inc"
 
 install:
+%if CHECK_POFO
+        ; Refuse to install on anything that isn't a real Atari Portfolio
+        ; - see pofodetect.inc for the port 0x61 probe this relies on.
+        call    is_pofo
+        je      .is_portfolio
+
+        mov     dx, msg_not_portfolio
+        mov     ah, 0x09
+        int     0x21
+        mov     ax, 0x4c01
+        int     0x21
+%endif
+
+.is_portfolio:
+        ; Refuse to double-install: ask any already-resident PFTD hook
+        ; whether it's there (see residentcheck.inc). Only safe to try if
+        ; int 0x61 actually points somewhere - on real Portfolio hardware
+        ; the ROM always has its own int 0x61 handler installed, but a
+        ; generic PC/DOS (or DOSBox) normally has a NULL vector there,
+        ; and calling through a NULL vector hangs/crashes instead of
+        ; harmlessly returning. So check the vector segment:offset isn't
+        ; 0000:0000 first.
+        mov     ax, 0x3561
+        int     0x21
+        mov     ax, es
+        or      ax, bx
+        jz      .not_resident           ; vector is 0000:0000 - nothing to ask
+
+        mov     ax, PROBE_CMD
+        int     0x61
+        cmp     ax, PROBE_ANSWER
+        jne     .not_resident
+
+        mov     dx, msg_already_resident
+        mov     ah, 0x09
+        int     0x21
+        mov     ax, 0x4c01
+        int     0x21
+
+.not_resident:
         ; Print "PFTD v" then VERSION as a decimal number - e.g. "PFTD v1"
         mov     dx, msg_pftd_v
         mov     ah, 0x09
@@ -163,7 +227,9 @@ install:
         mov     ax, 0x3100
         int     0x21
 
-msg_pftd_v      db 'PFTD v$'
-msg_build_open  db ' ($'
-msg_installing  db ') - Installing...', 13, 10, '$'
-msg_installed   db 'Installed', 13, 10, '$'
+msg_pftd_v        db 'PFTD v$'
+msg_build_open    db ' ($'
+msg_installing    db ') - Installing...', 13, 10, '$'
+msg_installed     db 'Installed', 13, 10, '$'
+msg_not_portfolio db 'This is not an Atari Portfolio.', 13, 10, '$'
+msg_already_resident db 'PFTD is already resident.', 13, 10, '$'
