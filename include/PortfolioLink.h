@@ -55,6 +55,7 @@ public:
   bool startUpload(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite);
   bool startDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite);
   PortfolioResult listFiles(const char* pattern, String& output);
+  PortfolioResult sendRaw(const uint8_t* data, size_t len, String& response);
 
 private:
   enum Verbosity {
@@ -67,8 +68,11 @@ private:
   enum class JobType {
     List,
     Upload,
-    Download
+    Download,
+    Raw
   };
+
+  static constexpr size_t RAW_BUFSIZE = 90;
 
   struct Job {
     JobType type;
@@ -79,6 +83,9 @@ private:
     String* listOutput;
     PortfolioResult* resultOut;
     SemaphoreHandle_t done;
+    const uint8_t* rawData;
+    size_t rawLen;
+    String* rawResponse;
   };
 
   static void taskThunk(void* arg);
@@ -99,6 +106,7 @@ private:
   PortfolioResult runList(const char* pattern, String& output);
   PortfolioResult runUpload(fs::FS& fs, const char* filename, const char* dest, bool overwrite);
   PortfolioResult runDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite);
+  PortfolioResult runRaw(const uint8_t* data, size_t len, String& response);
 
   Print& log_;
   PortfolioPins pins_{};

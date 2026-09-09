@@ -302,6 +302,44 @@ void handleDownloadFromAtari(AsyncWebServerRequest* request) {
   }
 }
 
+// Temporary debug endpoint for testing a new Atari-side TSR/hook: sends an
+// arbitrary hex-encoded byte block over the smart-cable link and returns
+// whatever comes back, also hex-encoded. POST param "data" = hex string
+// (e.g. "0006AA" for bytes 0x00,0x06,0xAA). No interpretation on this side.
+void handleSendRaw(AsyncWebServerRequest* request) {
+  if (!request->hasParam("data", true)) {
+    request->send(500, "text/plain", "BAD ARGS");
+    return;
+  }
+
+  String hex = request->getParam("data", true)->value();
+  if (hex.length() % 2 != 0) {
+    request->send(500, "text/plain", "hex data must have even length");
+    return;
+  }
+
+  size_t len = hex.length() / 2;
+  uint8_t* buf = static_cast<uint8_t*>(malloc(len));
+  if (!buf) {
+    request->send(500, "text/plain", "OOM");
+    return;
+  }
+  for (size_t i = 0; i < len; i++) {
+    buf[i] = strtoul(hex.substring(i * 2, i * 2 + 2).c_str(), nullptr, 16);
+  }
+
+  String response;
+  PortfolioResult result = portfolio.sendRaw(buf, len, response);
+  free(buf);
+
+  if (result != PortfolioResult::Ok) {
+    request->send(500, "text/plain", "sendRaw failed: " + String(resultText(result)));
+    return;
+  }
+
+  request->send(200, "text/plain", response);
+}
+
 void handleFileListESP32(AsyncWebServerRequest* request) {
   String dir = "/";
   if (request->hasParam("dir")) {
@@ -378,6 +416,7 @@ void setup() {
   server.on("/deleteESP32", HTTP_POST, handleDeleteESP32);
   server.on("/sendToAtari", HTTP_POST, handleSendToAtari);
   server.on("/downloadFromAtari", HTTP_POST, handleDownloadFromAtari);
+  server.on("/sendRaw", HTTP_POST, handleSendRaw);
   server.serveStatic("/files/", FILESYSTEM, DATA_DIR "/").setCacheControl("no-store");
   server.serveStatic("/", FILESYSTEM, "/web/").setDefaultFile("index.htm");
 

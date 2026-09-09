@@ -140,6 +140,37 @@ PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
   return result;
 }
 
+PortfolioResult PortfolioLink::sendRaw(const uint8_t* data, size_t len, String& response) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  PortfolioResult result = PortfolioResult::Unknown;
+
+  Job job{};
+  job.type = JobType::Raw;
+  job.rawData = data;
+  job.rawLen = len;
+  job.rawResponse = &response;
+  job.resultOut = &result;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    response = "";
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return result;
+}
+
 void PortfolioLink::taskThunk(void* arg) {
   static_cast<PortfolioLink*>(arg)->taskLoop();
 }
@@ -158,6 +189,8 @@ void PortfolioLink::taskLoop() {
         result = runUpload(*job.fs, job.localPath, job.pofoPath, job.overwrite);
       } else if (job.type == JobType::Download && job.fs) {
         result = runDownload(*job.fs, job.pofoPath, job.localPath, job.overwrite);
+      } else if (job.type == JobType::Raw && job.rawResponse) {
+        result = runRaw(job.rawData, job.rawLen, *job.rawResponse);
       } else {
         result = PortfolioResult::Unknown;
       }
@@ -438,6 +471,28 @@ PortfolioResult PortfolioLink::runList(const char* pattern, String& output) {
     }
     output += name;
     name += strlen(name) + 1;
+  }
+
+  return PortfolioResult::Ok;
+}
+
+PortfolioResult PortfolioLink::runRaw(const uint8_t* data, size_t len, String& response) {
+  log_.printf("Sending raw block, %u bytes\n", static_cast<unsigned>(len));
+
+  if (!sendBlock(data, len, VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
+  int received = receiveBlock(payload_, PAYLOAD_BUFSIZE, VERB_ERRORS);
+  if (received < 0) {
+    return PortfolioResult::Unknown;
+  }
+
+  response = "";
+  static const char hexDigits[] = "0123456789ABCDEF";
+  for (int i = 0; i < received; i++) {
+    response += hexDigits[(payload_[i] >> 4) & 0x0F];
+    response += hexDigits[payload_[i] & 0x0F];
   }
 
   return PortfolioResult::Ok;
