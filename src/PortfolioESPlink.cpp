@@ -215,6 +215,66 @@ void handleFileListAtari(AsyncWebServerRequest* request) {
   request->send(200, "application/json", filesToJson(files));
 }
 
+// Extended listing (PFTD 0x86, requires the PFTD driver to be resident on
+// the Portfolio - see /hello capabilities). Each entry line from
+// PortfolioLink::listFilesExtended is "D|F,size,YYYY-MM-DD HH:MM:SS,name" -
+// split into JSON objects, same shape as espFilesToJson's "items" array.
+String atariExtFilesToJson(const String& entries) {
+  String output = "{ \"items\" : [";
+  int start = 0;
+  bool first = true;
+
+  while (start < entries.length()) {
+    int end = entries.indexOf('\n', start);
+    if (end < 0) {
+      end = entries.length();
+    }
+
+    String line = entries.substring(start, end);
+    int c1 = line.indexOf(',');
+    int c2 = line.indexOf(',', c1 + 1);
+    int c3 = line.indexOf(',', c2 + 1);
+    if (c1 > 0 && c2 > c1 && c3 > c2) {
+      if (!first) {
+        output += ',';
+      }
+      output += "{ \"name\" : \"";
+      output += line.substring(c3 + 1);
+      output += "\", \"type\" : \"";
+      output += line.charAt(0) == 'D' ? "folder" : "file";
+      output += "\", \"size\" : ";
+      output += line.substring(c1 + 1, c2);
+      output += ", \"modified\" : \"";
+      output += line.substring(c2 + 1, c3);
+      output += "\" }";
+      first = false;
+    }
+
+    start = end + 1;
+  }
+
+  output += "]}";
+  return output;
+}
+
+void handleFileListAtariExt(AsyncWebServerRequest* request) {
+  if (!request->hasParam("dir")) {
+    request->send(500, "text/plain", "BAD ARGS");
+    return;
+  }
+
+  String path = request->getParam("dir")->value();
+  DBG_OUTPUT_PORT.println("handleFileListExt: " + path);
+
+  String entries;
+  if (portfolio.listFilesExtended(path.c_str(), entries) != PortfolioResult::Ok) {
+    request->send(500, "text/plain", "Portfolio extended list failed");
+    return;
+  }
+
+  request->send(200, "application/json", atariExtFilesToJson(entries));
+}
+
 void handleStatus(AsyncWebServerRequest* request) {
   String output = "{ \"status\" : \"";
   output += statusText(portfolio.status());
@@ -438,6 +498,7 @@ void setup() {
   server.on("/upload", HTTP_POST, [](AsyncWebServerRequest* request) {}, handleFileUpload);
 
   server.on("/listAtari", HTTP_GET, handleFileListAtari);
+  server.on("/listAtariExt", HTTP_GET, handleFileListAtariExt);
   server.on("/listESP32", HTTP_GET, handleFileListESP32);
   server.on("/status", HTTP_GET, handleStatus);
   server.on("/deleteESP32", HTTP_POST, handleDeleteESP32);

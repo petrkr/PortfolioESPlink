@@ -129,6 +129,9 @@ private:
   volatile size_t transferTotal_ = 0;
   unsigned char* payload_ = nullptr;
   unsigned char* controlData_ = nullptr;
+  // offset 3-6 (time, then date - DOS packed format) is overwritten with
+  // the current UTC time on every upload, see runUpload/currentDosTimeDate
+  // in PortfolioLink.cpp; the initializer values here are never sent as-is.
   unsigned char transmitInit_[90] = {
     0x03, 0x00, 0x70, 0x0C, 0x7A, 0x21, 0x32,
     0, 0, 0, 0

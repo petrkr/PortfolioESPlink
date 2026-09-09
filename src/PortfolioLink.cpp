@@ -1,6 +1,7 @@
 #include "PortfolioLink.h"
 
 #include <string.h>
+#include <time.h>
 
 namespace {
 const unsigned char TRANSMIT_OVERWRITE[3] = {0x05, 0x00, 0x70};
@@ -11,6 +12,27 @@ const uint32_t DETECT_TIMEOUT_US = 50000;
 const TickType_t DETECT_INTERVAL = pdMS_TO_TICKS(100);
 const uint8_t DETECT_MISSES_TO_DISCONNECT = 8;
 const TickType_t JOB_WAIT = pdMS_TO_TICKS(30000);
+
+// currentDosTimeDate: current UTC time as a DOS packed time/date pair (same
+// encoding runListExt decodes from the LIST extended DTA - see list.inc).
+// Falls back to a fixed placeholder if the ESP32 hasn't synced NTP yet
+// (time(nullptr) reads as 1970 before sync - year clamps to the DOS epoch,
+// which would misrepresent "unsynced" as a real 1980 date, so this checks
+// for that explicitly instead).
+void currentDosTimeDate(uint16_t& dosTime, uint16_t& dosDate) {
+  time_t now = time(nullptr);
+  struct tm utc;
+  gmtime_r(&now, &utc);
+
+  if (utc.tm_year + 1900 < 1980) {
+    dosTime = 0;
+    dosDate = 0;
+    return;
+  }
+
+  dosDate = static_cast<uint16_t>(((utc.tm_year + 1900 - 1980) << 9) | ((utc.tm_mon + 1) << 5) | utc.tm_mday);
+  dosTime = static_cast<uint16_t>((utc.tm_hour << 11) | (utc.tm_min << 5) | (utc.tm_sec / 2));
+}
 }
 
 PortfolioLink::PortfolioLink(Print& log) : log_(log) {}
@@ -684,6 +706,14 @@ PortfolioResult PortfolioLink::runUpload(fs::FS& fs, const char* filename, const
   }
 
   file.seek(0, SeekSet);
+
+  uint16_t dosTime = 0;
+  uint16_t dosDate = 0;
+  currentDosTimeDate(dosTime, dosDate);
+  transmitInit_[3] = dosTime & 0xFF;
+  transmitInit_[4] = (dosTime >> 8) & 0xFF;
+  transmitInit_[5] = dosDate & 0xFF;
+  transmitInit_[6] = (dosDate >> 8) & 0xFF;
 
   transmitInit_[7] = len & 255;
   transmitInit_[8] = (len >> 8) & 255;
