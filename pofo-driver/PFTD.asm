@@ -104,6 +104,7 @@ resident_end:
 %include "hexprint.inc"
 
 install:
+        ; Print "PFTD v" then VERSION as a decimal number - e.g. "PFTD v1"
         mov     dx, msg_pftd_v
         mov     ah, 0x09
         int     0x21
@@ -111,6 +112,8 @@ install:
         mov     al, VERSION
         call    print_dec8
 
+        ; Print " (" then BUILD_ID as 8 lowercase hex digits, e.g.
+        ; " (ffff0005" - completes the banner to "PFTD v1 (ffff0005"
         mov     dx, msg_build_open
         mov     ah, 0x09
         int     0x21
@@ -119,25 +122,40 @@ install:
         mov     ax, BUILD_ID & 0xFFFF
         call    print_hex32
 
+        ; Close the banner: ") - Installing...\r\n" -> full first line is
+        ; "PFTD v1 (ffff0005) - Installing..."
         mov     dx, msg_installing
         mov     ah, 0x09
         int     0x21
 
+        ; Read the current int 0x61 vector (DOS Get Interrupt Vector,
+        ; AH=0x35) and stash it in old61 so pftd_int61_handler can chain
+        ; to it later - this must happen before we install our own hook.
         mov     ax, 0x3561
         int     0x21
         mov     [old61], bx
         mov     [old61+2], es
 
+        ; Point int 0x61 at pftd_int61_handler (DOS Set Interrupt Vector,
+        ; AH=0x25). DS must be CS (the segment pftd_int61_handler lives
+        ; in) while DX holds the offset - saved/restored around the call
+        ; since DS is otherwise whatever DOS gave us at program start.
         push    ds
         mov     dx, pftd_int61_handler
         mov     ax, 0x2561
         int     0x21
         pop     ds
 
+        ; Vector is live - print "Installed" to confirm before we go
+        ; resident (nothing after this point can print anything else).
         mov     dx, msg_installed
         mov     ah, 0x09
         int     0x21
 
+        ; Terminate and Stay Resident (DOS AH=0x31): keep everything up to
+        ; resident_end (code + hook state) allocated after this program
+        ; exits, so pftd_int61_handler keeps working once the shell
+        ; prompt returns. Size is in 16-byte paragraphs, rounded up.
         mov     dx, resident_end
         add     dx, 0x0F
         mov     cl, 4
