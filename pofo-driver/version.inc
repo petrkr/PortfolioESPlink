@@ -5,6 +5,6 @@
 ; programmatically (a simple line replace is enough).
 
 VERSION   equ 1                ; HELLO response protocol version (offset 8)
-BUILD_ID  equ 0xFFFF000E       ; dev snapshot marker (offset 4-7) or, once
+BUILD_ID  equ 0xFFFF000F       ; dev snapshot marker (offset 4-7) or, once
                                 ; committed, the 4-byte binary git short
                                 ; hash - see hello.inc for the full layout
