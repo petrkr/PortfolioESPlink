@@ -55,6 +55,7 @@ public:
   bool startUpload(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite);
   bool startDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite);
   PortfolioResult listFiles(const char* pattern, String& output);
+  PortfolioResult listFilesExtended(const char* pattern, String& output);
   PortfolioResult sendRaw(const uint8_t* data, size_t len, String& response);
   PortfolioResult helloDaemon(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities);
 
@@ -68,6 +69,7 @@ private:
 
   enum class JobType {
     List,
+    ListExt,
     Upload,
     Download,
     Raw,
@@ -110,6 +112,7 @@ private:
   bool detectOnce();
 
   PortfolioResult runList(const char* pattern, String& output);
+  PortfolioResult runListExt(const char* pattern, String& output);
   PortfolioResult runUpload(fs::FS& fs, const char* filename, const char* dest, bool overwrite);
   PortfolioResult runDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite);
   PortfolioResult runRaw(const uint8_t* data, size_t len, String& response);

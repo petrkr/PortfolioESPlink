@@ -140,6 +140,37 @@ PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
   return result;
 }
 
+PortfolioResult PortfolioLink::listFilesExtended(const char* pattern, String& output) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  PortfolioResult result = PortfolioResult::Unknown;
+
+  Job job{};
+  job.type = JobType::ListExt;
+  strncpy(job.pofoPath, pattern, MAX_FILENAME_LEN);
+  job.pofoPath[MAX_FILENAME_LEN] = '\0';
+  job.listOutput = &output;
+  job.resultOut = &result;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    output = "";
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return result;
+}
+
 PortfolioResult PortfolioLink::sendRaw(const uint8_t* data, size_t len, String& response) {
   if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
     return PortfolioResult::Unknown;
@@ -220,6 +251,8 @@ void PortfolioLink::taskLoop() {
       PortfolioResult result;
       if (job.type == JobType::List && job.listOutput) {
         result = runList(job.pofoPath, *job.listOutput);
+      } else if (job.type == JobType::ListExt && job.listOutput) {
+        result = runListExt(job.pofoPath, *job.listOutput);
       } else if (job.type == JobType::Upload && job.fs) {
         result = runUpload(*job.fs, job.localPath, job.pofoPath, job.overwrite);
       } else if (job.type == JobType::Download && job.fs) {
@@ -508,6 +541,75 @@ PortfolioResult PortfolioLink::runList(const char* pattern, String& output) {
     }
     output += name;
     name += strlen(name) + 1;
+  }
+
+  return PortfolioResult::Ok;
+}
+
+PortfolioResult PortfolioLink::runListExt(const char* pattern, String& output) {
+  log_.printf("Fetching extended directory listing for %s\n", pattern);
+
+  unsigned char request[RAW_BUFSIZE] = {0};
+  request[0] = 0x86;
+  request[2] = 0x70;
+  strncpy(reinterpret_cast<char*>(request) + 3, pattern, MAX_FILENAME_LEN);
+  request[sizeof(request) - 1] = '\0';
+
+  if (!sendBlock(request, sizeof(request), VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
+  int received = receiveBlock(payload_, PAYLOAD_BUFSIZE, VERB_ERRORS);
+  if (received < 0) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (received < 2) {
+    return PortfolioResult::Unknown;
+  }
+
+  int num = payload_[0] + (payload_[1] << 8);
+  size_t pos = 2;
+  output = "";
+
+  for (int i = 0; i < num; i++) {
+    if (pos + 9 > static_cast<size_t>(received)) {
+      break;
+    }
+
+    uint8_t attr = payload_[pos];
+    uint32_t size = static_cast<uint32_t>(payload_[pos + 1]) | (static_cast<uint32_t>(payload_[pos + 2]) << 8) |
+                    (static_cast<uint32_t>(payload_[pos + 3]) << 16) | (static_cast<uint32_t>(payload_[pos + 4]) << 24);
+    uint16_t date = static_cast<uint16_t>(payload_[pos + 5]) | (static_cast<uint16_t>(payload_[pos + 6]) << 8);
+    uint16_t time = static_cast<uint16_t>(payload_[pos + 7]) | (static_cast<uint16_t>(payload_[pos + 8]) << 8);
+    pos += 9;
+
+    const char* name = reinterpret_cast<char*>(payload_) + pos;
+    size_t nameLen = strnlen(name, received - pos);
+    pos += nameLen + 1;
+
+    // DOS packed date/time (Find First/Next DTA format): date = year-1980
+    // (bits 15-9) / month (8-5) / day (4-0); time = hour (15-11) / minute
+    // (10-5) / second/2 (4-0).
+    int year = ((date >> 9) & 0x7F) + 1980;
+    int month = (date >> 5) & 0x0F;
+    int day = date & 0x1F;
+    int hour = (time >> 11) & 0x1F;
+    int minute = (time >> 5) & 0x3F;
+    int second = (time & 0x1F) * 2;
+
+    if (i > 0) {
+      output += '\n';
+    }
+    output += (attr & 0x10) ? "D" : "F";
+    output += ',';
+    output += size;
+    output += ',';
+    char stamp[20];
+    snprintf(stamp, sizeof(stamp), "%04d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second);
+    output += stamp;
+    output += ',';
+    output += name;
   }
 
   return PortfolioResult::Ok;
