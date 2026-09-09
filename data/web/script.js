@@ -10,6 +10,8 @@ const espProgress = document.getElementById("espProgress");
 const pofoProgress = document.getElementById("pofoProgress");
 const toAtariBtn = document.getElementById("toAtariBtn");
 const fromAtariBtn = document.getElementById("fromAtariBtn");
+const helloBtn = document.getElementById("helloBtn");
+const helloStatus = document.getElementById("helloStatus");
 
 const selectedEsp = new Set();
 const selectedAtari = new Set();
@@ -188,8 +190,33 @@ async function copySelectedFromAtari() {
   }
 }
 
+async function checkHello() {
+  helloBtn.disabled = true;
+  helloStatus.textContent = "Checking...";
+  try {
+    const response = await fetch("/hello");
+    if (!response.ok) {
+      helloStatus.textContent = await response.text();
+      return;
+    }
+
+    const data = await response.json();
+    if (!data.present) {
+      helloStatus.textContent = "Not running";
+      return;
+    }
+
+    helloStatus.textContent = `Active - build ${data.buildId}, version ${data.version}, capabilities 0x${data.capabilities.toString(16).padStart(2, "0")}`;
+  } catch {
+    helloStatus.textContent = "Check failed";
+  } finally {
+    helloBtn.disabled = false;
+  }
+}
+
 toAtariBtn.addEventListener("click", copySelectedToAtari);
 fromAtariBtn.addEventListener("click", copySelectedFromAtari);
+helloBtn.addEventListener("click", checkHello);
 
 listForm.addEventListener("submit", async (event) => {
   event.preventDefault();

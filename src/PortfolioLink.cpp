@@ -171,6 +171,41 @@ PortfolioResult PortfolioLink::sendRaw(const uint8_t* data, size_t len, String& 
   return result;
 }
 
+PortfolioResult PortfolioLink::helloDaemon(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  PortfolioResult result = PortfolioResult::Unknown;
+  present = false;
+  buildId = 0;
+  version = 0;
+  capabilities = 0;
+
+  Job job{};
+  job.type = JobType::Hello;
+  job.resultOut = &result;
+  job.helloPresent = &present;
+  job.helloBuildId = &buildId;
+  job.helloVersion = &version;
+  job.helloCapabilities = &capabilities;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return result;
+}
+
 void PortfolioLink::taskThunk(void* arg) {
   static_cast<PortfolioLink*>(arg)->taskLoop();
 }
@@ -191,6 +226,8 @@ void PortfolioLink::taskLoop() {
         result = runDownload(*job.fs, job.pofoPath, job.localPath, job.overwrite);
       } else if (job.type == JobType::Raw && job.rawResponse) {
         result = runRaw(job.rawData, job.rawLen, *job.rawResponse);
+      } else if (job.type == JobType::Hello && job.helloPresent) {
+        result = runHello(*job.helloPresent, *job.helloBuildId, *job.helloVersion, *job.helloCapabilities);
       } else {
         result = PortfolioResult::Unknown;
       }
@@ -495,6 +532,34 @@ PortfolioResult PortfolioLink::runRaw(const uint8_t* data, size_t len, String& r
     response += hexDigits[payload_[i] & 0x0F];
   }
 
+  return PortfolioResult::Ok;
+}
+
+PortfolioResult PortfolioLink::runHello(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities) {
+  log_.println("Probing for PFDAEMON (HELLO)");
+
+  unsigned char request[RAW_BUFSIZE] = {0};
+  request[0] = 0x80;
+
+  if (!sendBlock(request, sizeof(request), VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
+  int received = receiveBlock(payload_, PAYLOAD_BUFSIZE, VERB_ERRORS);
+  if (received < 0) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (received < 12 || memcmp(payload_, "PFD1", 4) != 0) {
+    present = false;
+    return PortfolioResult::Ok;
+  }
+
+  present = true;
+  buildId = static_cast<uint32_t>(payload_[4]) | (static_cast<uint32_t>(payload_[5]) << 8) |
+            (static_cast<uint32_t>(payload_[6]) << 16) | (static_cast<uint32_t>(payload_[7]) << 24);
+  version = payload_[8];
+  capabilities = payload_[9];
   return PortfolioResult::Ok;
 }
 

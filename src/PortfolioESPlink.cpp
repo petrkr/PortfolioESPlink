@@ -340,6 +340,33 @@ void handleSendRaw(AsyncWebServerRequest* request) {
   request->send(200, "text/plain", response);
 }
 
+void handleHello(AsyncWebServerRequest* request) {
+  bool present = false;
+  uint32_t buildId = 0;
+  uint8_t version = 0;
+  uint8_t capabilities = 0;
+
+  PortfolioResult result = portfolio.helloDaemon(present, buildId, version, capabilities);
+  if (result != PortfolioResult::Ok) {
+    request->send(500, "text/plain", "hello failed: " + String(resultText(result)));
+    return;
+  }
+
+  char buildIdHex[9];
+  snprintf(buildIdHex, sizeof(buildIdHex), "%08X", buildId);
+
+  String output = "{ \"present\" : ";
+  output += present ? "true" : "false";
+  output += ", \"buildId\" : \"";
+  output += buildIdHex;
+  output += "\", \"version\" : ";
+  output += version;
+  output += ", \"capabilities\" : ";
+  output += capabilities;
+  output += " }";
+  request->send(200, "application/json", output);
+}
+
 void handleFileListESP32(AsyncWebServerRequest* request) {
   String dir = "/";
   if (request->hasParam("dir")) {
@@ -417,6 +444,7 @@ void setup() {
   server.on("/sendToAtari", HTTP_POST, handleSendToAtari);
   server.on("/downloadFromAtari", HTTP_POST, handleDownloadFromAtari);
   server.on("/sendRaw", HTTP_POST, handleSendRaw);
+  server.on("/hello", HTTP_GET, handleHello);
   server.serveStatic("/files/", FILESYSTEM, DATA_DIR "/").setCacheControl("no-store");
   server.serveStatic("/", FILESYSTEM, "/web/").setDefaultFile("index.htm");
 
