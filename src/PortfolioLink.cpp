@@ -550,11 +550,45 @@ void PortfolioLink::writePort(unsigned char data) {
   digitalWrite(pins_.outClock, data & 2);
 }
 
+// Both waitClock* functions poll a GPIO with a timeout up to CLOCK_TIMEOUT_US
+// (2s). A pure busy-poll here starves same-core tasks on this single-core
+// (ESP32-C3) target - reproduced on real hardware as async_tcp's task
+// watchdog firing (Aborting/reboot) while this loop spun waiting for the
+// Portfolio to answer a handshake byte that never came (observed during the
+// auto-probe HELLO right after a fresh WiFi connect, before the Portfolio
+// side was ready). A plain taskYIELD() every iteration was tried first and
+// did NOT fix it: taskYIELD() only offers the CPU to another already-READY
+// task at that exact instant - if async_tcp is blocked waiting on its own
+// socket/queue at that moment (its normal idle state), taskYIELD() returns
+// almost immediately and the loop keeps monopolizing the CPU, which starved
+// the watchdog just the same (confirmed via a decoded crash backtrace
+// showing vPortYield itself on the stack at the moment of the watchdog
+// abort).
+//
+// Fix: busy-poll with taskYIELD() only for the first ~1 tick's worth of
+// time (kBusyPollBudgetUs) - this keeps normal bit-level polling (Portfolio
+// answers within microseconds during an active transfer) exactly as fast as
+// before. Once that budget is exceeded, switch to vTaskDelay(1), which
+// unconditionally blocks this task for at least one real FreeRTOS tick -
+// guaranteed to give every other task (including async_tcp and the idle
+// task that feeds its watchdog) real CPU time, unlike taskYIELD(). This
+// only adds up-to-1-tick latency to the rare case of waiting out most of a
+// multi-second timeout for a Portfolio that isn't responding at all.
+namespace {
+constexpr uint32_t kBusyPollBudgetUs = 1000;
+}
+
 bool PortfolioLink::waitClockHigh(uint32_t timeoutUs) {
   uint32_t start = micros();
   while (!digitalRead(pins_.inClock)) {
-    if (micros() - start >= timeoutUs) {
+    uint32_t elapsed = micros() - start;
+    if (elapsed >= timeoutUs) {
       return false;
+    }
+    if (elapsed < kBusyPollBudgetUs) {
+      taskYIELD();
+    } else {
+      vTaskDelay(1);
     }
   }
   return true;
@@ -563,8 +597,14 @@ bool PortfolioLink::waitClockHigh(uint32_t timeoutUs) {
 bool PortfolioLink::waitClockLow(uint32_t timeoutUs) {
   uint32_t start = micros();
   while (digitalRead(pins_.inClock)) {
-    if (micros() - start >= timeoutUs) {
+    uint32_t elapsed = micros() - start;
+    if (elapsed >= timeoutUs) {
       return false;
+    }
+    if (elapsed < kBusyPollBudgetUs) {
+      taskYIELD();
+    } else {
+      vTaskDelay(1);
     }
   }
   return true;
