@@ -483,6 +483,18 @@ void PortfolioLink::taskLoop() {
       if (job.done) {
         xSemaphoreGive(job.done);
       }
+
+      // A completed job just exchanged real bytes with the Portfolio, so
+      // the link is known-good - reset the passive Z-byte detector instead
+      // of letting it immediately re-test on a possibly-quiet line (the
+      // ROM's idle 'Z' broadcast isn't perfectly periodic, so a detectOnce()
+      // right here can spuriously miss and, over a few ticks, flip status_
+      // to Disconnected and trigger a needless HELLO re-probe on the next
+      // job even though the connection never actually dropped).
+      if (result != PortfolioResult::Unknown) {
+        misses = 0;
+        lastDetect = xTaskGetTickCount();
+      }
       continue;
     }
 
