@@ -5,6 +5,8 @@
 #include <log4mcu.h>
 
 #include "PortfolioLink.h"
+#include "Version.h"
+#include "secrets.h"
 
 #define LED2 4
 #define LED3 10
@@ -13,8 +15,6 @@
 #define FILESYSTEM LittleFS
 #define DATA_DIR "/data"
 
-const char* ssid = "";
-const char* password = "";
 const char* host = "portfolioesplink";
 
 AsyncWebServer server(80);
@@ -283,7 +283,12 @@ void handleFileListAtariExt(AsyncWebServerRequest* request) {
 }
 
 void handleStatus(AsyncWebServerRequest* request) {
-  String output = "{ \"status\" : \"";
+  char fwBuildIdHex[9];
+  snprintf(fwBuildIdHex, sizeof(fwBuildIdHex), "%08X", FW_BUILD_ID);
+
+  String output = "{ \"fwBuildId\" : \"";
+  output += fwBuildIdHex;
+  output += "\", \"status\" : \"";
   output += statusText(portfolio.status());
   output += "\", \"connected\" : ";
   output += portfolio.isConnected() ? "true" : "false";

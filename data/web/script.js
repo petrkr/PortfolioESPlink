@@ -13,6 +13,7 @@ const pofoProgress = document.getElementById("pofoProgress");
 const toAtariBtn = document.getElementById("toAtariBtn");
 const fromAtariBtn = document.getElementById("fromAtariBtn");
 const pftdStatus = document.getElementById("pftdStatus");
+const fwVersion = document.getElementById("fwVersion");
 const atariUpBtn = document.getElementById("atariUpBtn");
 const atariPath = document.getElementById("atariPath");
 const atariSpace = document.getElementById("atariSpace");
@@ -150,6 +151,7 @@ async function refreshStatus() {
     const data = await response.json();
     statusEl.textContent = data.status === "busy" ? "Busy" : (data.connected ? "Connected" : "Disconnected");
     statusEl.dataset.state = data.status;
+    fwVersion.textContent = data.fwBuildId ? `[${data.fwBuildId}]` : "";
 
     if (data.espTotal > 0) {
       espSpace.textContent = `(${formatBytes(data.espUsed)} / ${formatBytes(data.espTotal)})`;

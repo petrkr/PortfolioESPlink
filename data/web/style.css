@@ -59,6 +59,15 @@ h1 {
   text-transform: uppercase;
 }
 
+.fw-version {
+  font-size: 11px;
+  font-weight: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--nc-header-text);
+  opacity: 0.7;
+}
+
 section {
   margin-bottom: 8px;
 }
