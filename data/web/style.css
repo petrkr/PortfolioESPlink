@@ -250,6 +250,19 @@ button:disabled {
   color: #000;
 }
 
+.fn-bar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px 6px;
+  border-top: 1px solid var(--nc-border);
+}
+
+.fn-bar button {
+  flex: 1;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
 .transfer-arrows {
   display: flex;
   flex-direction: column;

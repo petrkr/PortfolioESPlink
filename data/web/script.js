@@ -19,13 +19,19 @@ const atariPath = document.getElementById("atariPath");
 const atariSpace = document.getElementById("atariSpace");
 const atariDrives = document.getElementById("atariDrives");
 const espUpBtn = document.getElementById("espUpBtn");
+const atariMkdirBtn = document.getElementById("atariMkdirBtn");
+const atariDeleteBtn = document.getElementById("atariDeleteBtn");
 
 const CAP_LIST_EXT = 0x01;
 const CAP_DRIVES = 0x02;
+const CAP_MKDIR = 0x04;
+const CAP_DELETE = 0x08;
+const CAP_RMDIR = 0x10;
 const FALLBACK_DRIVES = ["A", "B", "C"];
 
 const selectedEsp = new Set();
 const selectedAtari = new Set();
+const selectedAtariIsDir = new Map();
 let lastAtariDir = "";
 let currentEspDir = "/";
 let pftdCapabilities = 0;
@@ -83,6 +89,97 @@ atariUpBtn.addEventListener("click", () => {
   atariPath.value = parent;
   listForm.requestSubmit();
 });
+
+async function atariListDirRaw(fullDirPath) {
+  const response = await fetch(`/listAtariExt?dir=${encodeURIComponent(`${fullDirPath}\\*.*`)}`);
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+  const data = await response.json();
+  return data.items.filter((item) => item.name !== "." && item.name !== "..");
+}
+
+async function collectAtariEntries(fullPath, isDir, out) {
+  if (isDir) {
+    const children = await atariListDirRaw(fullPath);
+    for (const child of children) {
+      await collectAtariEntries(`${fullPath}\\${child.name}`, child.type === "folder", out);
+    }
+  }
+  out.push({ path: fullPath, isDir });
+}
+
+async function deleteAtariEntry(entry) {
+  const endpoint = entry.isDir ? "/rmdirAtari" : "/deleteAtari";
+  const response = await fetch(`${endpoint}?path=${encodeURIComponent(entry.path)}`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+}
+
+async function mkdirAtariPrompt() {
+  const name = prompt("New folder name:");
+  if (!name) return;
+
+  const dirPrefix = atariDirPrefix();
+  const fullPath = `${dirPrefix}${name}`;
+  const response = await fetch(`/mkdirAtari?path=${encodeURIComponent(fullPath)}`, { method: "POST" });
+  if (!response.ok) {
+    uploadStatus.textContent = await response.text();
+    return;
+  }
+  listForm.requestSubmit();
+}
+
+async function deleteSelectedAtari() {
+  if (selectedAtari.size === 0) {
+    uploadStatus.textContent = "No Atari files selected";
+    return;
+  }
+
+  const dirPrefix = atariDirPrefix();
+  const selection = Array.from(selectedAtari).map((name) => ({
+    name,
+    fullPath: `${dirPrefix}${name}`,
+    isDir: selectedAtariIsDir.get(name) === true,
+  }));
+
+  let entries;
+  try {
+    entries = [];
+    for (const item of selection) {
+      await collectAtariEntries(item.fullPath, item.isDir, entries);
+    }
+  } catch (err) {
+    uploadStatus.textContent = `Delete failed: ${err.message}`;
+    return;
+  }
+
+  const extraCount = entries.length - selection.length;
+  const message = extraCount > 0
+    ? `Delete ${selection.length} selected item(s) and ${extraCount} item(s) inside them?`
+    : `Delete ${selection.length} selected item(s)?`;
+  if (!confirm(message)) {
+    return;
+  }
+
+  atariDeleteBtn.disabled = true;
+  try {
+    for (const entry of entries) {
+      uploadStatus.textContent = `Deleting ${entry.path}...`;
+      await deleteAtariEntry(entry);
+    }
+    uploadStatus.textContent = "Deleted";
+  } catch (err) {
+    uploadStatus.textContent = `Delete failed: ${err.message}`;
+  } finally {
+    atariDeleteBtn.disabled = false;
+    listForm.requestSubmit();
+  }
+}
+
+atariMkdirBtn.addEventListener("click", mkdirAtariPrompt);
+atariDeleteBtn.addEventListener("click", deleteSelectedAtari);
 
 function atariCurrentDrive() {
   const dir = lastAtariDir || atariPath.value;
@@ -178,6 +275,8 @@ async function refreshStatus() {
       pftdStatus.title = "";
     }
     loadAtariDrives();
+    atariMkdirBtn.disabled = (pftdCapabilities & CAP_MKDIR) === 0;
+    atariDeleteBtn.disabled = (pftdCapabilities & (CAP_DELETE | CAP_RMDIR)) === 0;
 
     const isActive = data.status === "busy" || data.phase === "pofo_upload";
     if (isActive) {
@@ -193,6 +292,8 @@ async function refreshStatus() {
     pftdStatus.textContent = "";
     pftdStatus.title = "";
     loadAtariDrives();
+    atariMkdirBtn.disabled = true;
+    atariDeleteBtn.disabled = true;
   }
 }
 
@@ -386,6 +487,7 @@ listForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   atariFiles.textContent = "Loading...";
   selectedAtari.clear();
+  selectedAtariIsDir.clear();
 
   const dir = atariPath.value;
   lastAtariDir = dir;
@@ -412,20 +514,30 @@ listForm.addEventListener("submit", async (event) => {
 
   for (const item of items) {
     const isDir = item.type === "folder";
+    const isPseudoDir = item.name === "." || item.name === "..";
     const row = document.createElement("div");
     row.className = isDir ? "file-row dir" : "file-row";
 
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.addEventListener("change", () => {
-      if (checkbox.checked) {
-        selectedAtari.add(item.name);
-      } else {
-        selectedAtari.delete(item.name);
-      }
-      row.classList.toggle("selected", checkbox.checked);
-    });
-    row.appendChild(checkbox);
+    let checkbox = null;
+    if (isPseudoDir) {
+      const spacer = document.createElement("span");
+      spacer.className = "checkbox-spacer";
+      row.appendChild(spacer);
+    } else {
+      checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) {
+          selectedAtari.add(item.name);
+          selectedAtariIsDir.set(item.name, isDir);
+        } else {
+          selectedAtari.delete(item.name);
+          selectedAtariIsDir.delete(item.name);
+        }
+        row.classList.toggle("selected", checkbox.checked);
+      });
+      row.appendChild(checkbox);
+    }
 
     const kindEl = document.createElement("span");
     kindEl.className = "col-kind";
@@ -460,7 +572,9 @@ listForm.addEventListener("submit", async (event) => {
       });
     }
 
-    attachRowSelectToggle(row, checkbox);
+    if (checkbox) {
+      attachRowSelectToggle(row, checkbox);
+    }
     atariFiles.appendChild(row);
   }
   refreshStatus();
