@@ -125,7 +125,8 @@ async function mkdirAtariPrompt() {
   const fullPath = `${dirPrefix}${name}`;
   const response = await fetch(`/mkdirAtari?path=${encodeURIComponent(fullPath)}`, { method: "POST" });
   if (!response.ok) {
-    uploadStatus.textContent = await response.text();
+    uploadStatus.textContent = `Mkdir failed: ${await response.text()}`;
+    setPopoverOpen(true);
     return;
   }
   listForm.requestSubmit();
@@ -134,6 +135,7 @@ async function mkdirAtariPrompt() {
 async function deleteSelectedAtari() {
   if (selectedAtari.size === 0) {
     uploadStatus.textContent = "No Atari files selected";
+    setPopoverOpen(true);
     return;
   }
 
@@ -152,6 +154,7 @@ async function deleteSelectedAtari() {
     }
   } catch (err) {
     uploadStatus.textContent = `Delete failed: ${err.message}`;
+    setPopoverOpen(true);
     return;
   }
 
@@ -172,6 +175,7 @@ async function deleteSelectedAtari() {
     uploadStatus.textContent = "Deleted";
   } catch (err) {
     uploadStatus.textContent = `Delete failed: ${err.message}`;
+    setPopoverOpen(true);
   } finally {
     atariDeleteBtn.disabled = false;
     listForm.requestSubmit();
