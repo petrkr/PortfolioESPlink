@@ -68,6 +68,9 @@ payload0  db 0        ; captured payload[0] byte, read out safely below
 %include "hello.inc"
 %include "list.inc"
 %include "drives.inc"
+%include "mkdir.inc"
+%include "delete.inc"
+%include "critical_error.inc"
 %include "residentcheck.inc"
 
 ; list_src_ds/list_src_si: copy of saved_ds/saved_dx taken at the same
@@ -129,6 +132,10 @@ pftd_int61_handler:
         call    dispatch_list
         mov     al, [cs:payload0]
         call    dispatch_drives
+        mov     al, [cs:payload0]
+        call    dispatch_mkdir
+        mov     al, [cs:payload0]
+        call    dispatch_delete
 
 .no_pending:
         pop     ds
@@ -232,6 +239,24 @@ install:
         push    ds
         mov     dx, pftd_int61_handler
         mov     ax, 0x2561
+        int     0x21
+        pop     ds
+
+        ; Read and save the current int 0x24 vector (critical_error.inc),
+        ; then install pftd_int24_handler - same AH=0x35/AH=0x25 DOS API
+        ; pair used above for int 0x61, same DS=CS/DX=offset discipline.
+        ; Installed once here, resident for the life of the TSR - see
+        ; critical_error.inc's header for why (needed by mkdir.inc/
+        ; delete.inc, both of which do real disk I/O and can raise int 0x24
+        ; on a drive with no/write-protected media).
+        mov     ax, 0x3524
+        int     0x21
+        mov     [old24], bx
+        mov     [old24+2], es
+
+        push    ds
+        mov     dx, pftd_int24_handler
+        mov     ax, 0x2524
         int     0x21
         pop     ds
 

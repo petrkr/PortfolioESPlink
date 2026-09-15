@@ -64,6 +64,8 @@ public:
   PortfolioResult sendRaw(const uint8_t* data, size_t len, String& response);
   PortfolioResult helloDaemon(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities);
   PortfolioResult listDrives(uint8_t& driveCount);
+  PortfolioResult mkdirAtari(const char* pofoPath, uint8_t& errCode);
+  PortfolioResult deleteAtari(const char* pofoPath, uint8_t& errCode);
 
 private:
   enum Verbosity {
@@ -80,7 +82,9 @@ private:
     Download,
     Raw,
     Hello,
-    Drives
+    Drives,
+    Mkdir,
+    Delete
   };
 
   static constexpr size_t RAW_BUFSIZE = 90;
@@ -104,6 +108,7 @@ private:
     uint32_t* listFreeBytes;
     uint32_t* listTotalBytes;
     uint8_t* driveCount;
+    uint8_t* errCode;
   };
 
   static void taskThunk(void* arg);
@@ -128,6 +133,8 @@ private:
   PortfolioResult runRaw(const uint8_t* data, size_t len, String& response);
   PortfolioResult runHello(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities);
   PortfolioResult runDrives(uint8_t& driveCount);
+  PortfolioResult runMkdir(const char* pofoPath, uint8_t& errCode);
+  PortfolioResult runDelete(const char* pofoPath, uint8_t& errCode);
 
   log4mcu::Logger& log_;
   PortfolioPins pins_{};

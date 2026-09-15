@@ -7,7 +7,11 @@
 ; could plausibly understand in a future revision.
 ;
 ;   0x80  HELLO     -> replies with the 12-byte hello block described below
-;   0x81+ (reserved for future subcommands - mkdir/delete/free-space/list-v2)
+;   0x86  LIST_EXT  -> see list.inc
+;   0x87  DRIVES    -> see drives.inc
+;   0x88  MKDIR     -> see mkdir.inc
+;   0x89  DELETE    -> see delete.inc
+;   0x81-0x85, 0x8A+ (reserved for future subcommands)
 ;
 ; HELLO response layout (fixed 12 bytes):
 ;   offset 0-3  magic "PFD1"
@@ -27,18 +31,22 @@
 ; exist.
 ;   bit 0  CAP_LIST_EXT - LIST extended (0x86, see list.inc) supported
 ;   bit 1  CAP_DRIVES   - DRIVES (0x87, see drives.inc) supported
+;   bit 2  CAP_MKDIR    - MKDIR (0x88, see mkdir.inc) supported
+;   bit 3  CAP_DELETE   - DELETE (0x89, see delete.inc) supported
 
 %include "version.inc"
 
 HELLO_CMD equ 0x80
 CAP_LIST_EXT equ 0x01
-CAP_DRIVES equ 0x02
+CAP_DRIVES   equ 0x02
+CAP_MKDIR    equ 0x04
+CAP_DELETE   equ 0x08
 
 hello_response:
         db      'PFD1'          ; magic
         dd      BUILD_ID        ; build id / dev snapshot marker
         db      VERSION
-        db      CAP_LIST_EXT | CAP_DRIVES ; capabilities - see list.inc/drives.inc
+        db      CAP_LIST_EXT | CAP_DRIVES | CAP_MKDIR | CAP_DELETE ; capabilities - see list.inc/drives.inc/mkdir.inc/delete.inc
         db      0x00, 0x00      ; reserved
 hello_response_len equ $ - hello_response
 

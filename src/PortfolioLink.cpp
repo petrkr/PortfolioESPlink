@@ -312,6 +312,68 @@ PortfolioResult PortfolioLink::listDrives(uint8_t& driveCount) {
   return result;
 }
 
+PortfolioResult PortfolioLink::mkdirAtari(const char* pofoPath, uint8_t& errCode) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  PortfolioResult result = PortfolioResult::Unknown;
+  errCode = 0xFF;
+
+  Job job{};
+  job.type = JobType::Mkdir;
+  job.resultOut = &result;
+  strncpy(job.pofoPath, pofoPath, MAX_FILENAME_LEN);
+  job.pofoPath[MAX_FILENAME_LEN] = '\0';
+  job.errCode = &errCode;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return result;
+}
+
+PortfolioResult PortfolioLink::deleteAtari(const char* pofoPath, uint8_t& errCode) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  PortfolioResult result = PortfolioResult::Unknown;
+  errCode = 0xFF;
+
+  Job job{};
+  job.type = JobType::Delete;
+  job.resultOut = &result;
+  strncpy(job.pofoPath, pofoPath, MAX_FILENAME_LEN);
+  job.pofoPath[MAX_FILENAME_LEN] = '\0';
+  job.errCode = &errCode;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return result;
+}
+
 void PortfolioLink::taskThunk(void* arg) {
   static_cast<PortfolioLink*>(arg)->taskLoop();
 }
@@ -338,6 +400,10 @@ void PortfolioLink::taskLoop() {
         result = runHello(*job.helloPresent, *job.helloBuildId, *job.helloVersion, *job.helloCapabilities);
       } else if (job.type == JobType::Drives && job.driveCount) {
         result = runDrives(*job.driveCount);
+      } else if (job.type == JobType::Mkdir && job.errCode) {
+        result = runMkdir(job.pofoPath, *job.errCode);
+      } else if (job.type == JobType::Delete && job.errCode) {
+        result = runDelete(job.pofoPath, *job.errCode);
       } else {
         result = PortfolioResult::Unknown;
       }
@@ -793,6 +859,70 @@ PortfolioResult PortfolioLink::runDrives(uint8_t& driveCount) {
   }
 
   driveCount = payload_[0];
+  return PortfolioResult::Ok;
+}
+
+PortfolioResult PortfolioLink::runMkdir(const char* pofoPath, uint8_t& errCode) {
+  log_.infof("Creating directory on Portfolio: %s", pofoPath);
+
+  unsigned char request[RAW_BUFSIZE] = {0};
+  request[0] = 0x88;
+  request[2] = 0x70;
+  strncpy(reinterpret_cast<char*>(request) + 3, pofoPath, MAX_FILENAME_LEN);
+  request[sizeof(request) - 1] = '\0';
+
+  if (!sendBlock(request, sizeof(request), VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (receiveBlock(controlData_, CONTROL_BUFSIZE, VERB_ERRORS) < 2) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (controlData_[0] == 0x10) {
+    errCode = controlData_[1];
+    log_.errorf("Mkdir failed, errcode=%u", controlData_[1]);
+    return PortfolioResult::InvalidPath;
+  }
+
+  if (controlData_[0] != 0x20) {
+    log_.errorf("Unexpected mkdir response: %02X", controlData_[0]);
+    return PortfolioResult::Unknown;
+  }
+
+  errCode = 0;
+  return PortfolioResult::Ok;
+}
+
+PortfolioResult PortfolioLink::runDelete(const char* pofoPath, uint8_t& errCode) {
+  log_.infof("Deleting file on Portfolio: %s", pofoPath);
+
+  unsigned char request[RAW_BUFSIZE] = {0};
+  request[0] = 0x89;
+  request[2] = 0x70;
+  strncpy(reinterpret_cast<char*>(request) + 3, pofoPath, MAX_FILENAME_LEN);
+  request[sizeof(request) - 1] = '\0';
+
+  if (!sendBlock(request, sizeof(request), VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (receiveBlock(controlData_, CONTROL_BUFSIZE, VERB_ERRORS) < 2) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (controlData_[0] == 0x10) {
+    errCode = controlData_[1];
+    log_.errorf("Delete failed, errcode=%u", controlData_[1]);
+    return PortfolioResult::InvalidPath;
+  }
+
+  if (controlData_[0] != 0x20) {
+    log_.errorf("Unexpected delete response: %02X", controlData_[0]);
+    return PortfolioResult::Unknown;
+  }
+
+  errCode = 0;
   return PortfolioResult::Ok;
 }
 

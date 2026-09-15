@@ -75,15 +75,71 @@ byte `0x87`. Response: single byte, drive count.
   `listDrives()`.
 - Atari: `pofo-driver/drives.inc` (`DRIVES_CMD`, `dispatch_drives`).
 
+### MKDIR (`0x88`)
+
+Create a directory on the Portfolio (`int 0x21 AH=0x39`). Request:
+`0x88, 0x00, 0x70` + ASCIIZ target path. Response (fixed 2 bytes): see
+"Response status/errcode convention" below.
+
+- ESP: `PortfolioLink::runMkdir` (`PortfolioLink.cpp`), public API
+  `mkdirAtari()`.
+- Atari: `pofo-driver/mkdir.inc` (`MKDIR_CMD`, `dispatch_mkdir`).
+
+### DELETE (`0x89`)
+
+Delete a file on the Portfolio (`int 0x21 AH=0x41`, Unlink - files only,
+no directory deletion). Request: `0x89, 0x00, 0x70` + ASCIIZ target path.
+Response (fixed 2 bytes): see "Response status/errcode convention" below.
+
+- ESP: `PortfolioLink::runDelete` (`PortfolioLink.cpp`), public API
+  `deleteAtari()`.
+- Atari: `pofo-driver/delete.inc` (`DELETE_CMD`, `dispatch_delete`).
+
+### Response status/errcode convention (MKDIR/DELETE)
+
+MKDIR and DELETE are the first PFTD commands that can genuinely fail (bad
+path, already exists, disk full, no media, write-protected), and the first
+that perform real disk I/O from inside the `int 0x61` dispatch hook - which
+requires a resident `int 0x24` (DOS critical error) handler
+(`pofo-driver/critical_error.inc`) to avoid blocking on "Abort, Retry,
+Ignore?" on a drive with no media (see `ROM_RESEARCH_NOTES.md`'s DIP DOS
+critical-error findings from DRIVES development).
+
+Response is always exactly 2 bytes:
+
+| Offset | Size | Content |
+|---|---|---|
+| 0 | 1B | status: `0x20` = ok, `0x10` = error (reusing the ROM commands' convention) |
+| 1 | 1B | errcode: `0` on success; on failure, one of the table below |
+
+| errcode | Meaning | Used by |
+|---|---|---|
+| `1` | file/path not found | MKDIR, DELETE |
+| `2` | already exists | MKDIR only |
+| `3` | disk full | MKDIR |
+| `4` | access denied (write-protected, read-only, or DOS 2.x's coarse catch-all - may also cover "already exists" if DOS 2.x doesn't return a distinct code) | MKDIR, DELETE |
+| `0xFF` | critical error fired (`int 0x24` Ignore path taken) - `AX` not trustworthy, cause unknown | MKDIR, DELETE |
+
+**This mapping is a best-effort guess pending real-hardware verification.**
+DOS 2.x/DIP DOS's actual extended error codes reachable from `AH=0x39`/
+`AH=0x41` are not certain from documentation alone (RBIL is written
+primarily for PC MS-DOS 3.0+, and DIP DOS has already been shown to diverge
+from RBIL's documented contract on other calls - see
+`ROM_RESEARCH_NOTES.md`). In particular, errcode `2` ("already exists") for
+MKDIR is only implemented if real hardware confirms DOS 2.x returns a code
+distinct from access-denied (`5`); otherwise it folds into errcode `4`.
+
 ## Capabilities bitmask (HELLO response, offset 9)
 
 | Bit | Constant | Meaning |
 |---|---|---|
 | 0 (`0x01`) | `CAP_LIST_EXT` | LIST extended (`0x86`) supported |
 | 1 (`0x02`) | `CAP_DRIVES` | DRIVES (`0x87`) supported |
+| 2 (`0x04`) | `CAP_MKDIR` | MKDIR (`0x88`) supported |
+| 3 (`0x08`) | `CAP_DELETE` | DELETE (`0x89`) supported |
 
-Defined in `pofo-driver/hello.inc`; currently both bits are always set
-(`CAP_LIST_EXT | CAP_DRIVES`). ESP side reads the raw byte into
+Defined in `pofo-driver/hello.inc`; currently all four bits are always set
+(`CAP_LIST_EXT | CAP_DRIVES | CAP_MKDIR | CAP_DELETE`). ESP side reads the raw byte into
 `pftdCapabilities()` (`PortfolioLink.h`/`.cpp`) without named-bit
 helpers - callers mask it themselves.
 
@@ -102,8 +158,8 @@ placeholder, not a real release marker.
 
 ## Adding a new command
 
-1. Pick the next free code (`0x88+` - `0x81`-`0x85` are reserved,
-   unused so far).
+1. Pick the next free code (`0x8A+` - `0x81`-`0x85` are reserved,
+   unused so far; `0x88`/`0x89` are taken by MKDIR/DELETE).
 2. Give it its own capability bit in the HELLO response (offset 9),
    same pattern as `CAP_LIST_EXT`/`CAP_DRIVES`.
 3. Implement `dispatch_<name>` in a new or existing `pofo-driver/*.inc`,
@@ -119,7 +175,6 @@ placeholder, not a real release marker.
 
 ## Reserved / not yet implemented
 
-- `0x81`-`0x85`: reserved, unused.
-- Planned ideas (mkdir via `int 0x21 AH=0x39`, delete via
-  `AH=0x41`/`AH=0x3A`, SETTIME via `AH=0x2D`/`AH=0x2B`): rationale and
-  DOS-version caveats are in `ROM_RESEARCH_NOTES.md`.
+- `0x81`-`0x85`, `0x8A+`: reserved, unused.
+- Planned ideas (RMDIR via `AH=0x3A`, SETTIME via `AH=0x2D`/`AH=0x2B`):
+  rationale and DOS-version caveats are in `ROM_RESEARCH_NOTES.md`.

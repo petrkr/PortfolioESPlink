@@ -477,6 +477,50 @@ void handleDrives(AsyncWebServerRequest* request) {
   request->send(200, "application/json", output);
 }
 
+void handleMkdirAtari(AsyncWebServerRequest* request) {
+  if (!request->hasParam("path")) {
+    request->send(500, "text/plain", "BAD ARGS");
+    return;
+  }
+
+  String pofoPath = request->getParam("path")->value();
+  uint8_t errCode = 0;
+  PortfolioResult result = portfolio.mkdirAtari(pofoPath.c_str(), errCode);
+
+  if (result == PortfolioResult::Unknown) {
+    request->send(500, "text/plain", "mkdir failed: " + String(resultText(result)));
+    return;
+  }
+  if (result == PortfolioResult::InvalidPath) {
+    request->send(409, "text/plain", "mkdir failed, errcode=" + String(errCode));
+    return;
+  }
+
+  request->send(200, "text/plain", "Directory created");
+}
+
+void handleDeleteAtari(AsyncWebServerRequest* request) {
+  if (!request->hasParam("path")) {
+    request->send(500, "text/plain", "BAD ARGS");
+    return;
+  }
+
+  String pofoPath = request->getParam("path")->value();
+  uint8_t errCode = 0;
+  PortfolioResult result = portfolio.deleteAtari(pofoPath.c_str(), errCode);
+
+  if (result == PortfolioResult::Unknown) {
+    request->send(500, "text/plain", "delete failed: " + String(resultText(result)));
+    return;
+  }
+  if (result == PortfolioResult::InvalidPath) {
+    request->send(409, "text/plain", "delete failed, errcode=" + String(errCode));
+    return;
+  }
+
+  request->send(200, "text/plain", "Deleted");
+}
+
 void handleFileListESP32(AsyncWebServerRequest* request) {
   String dir = "/";
   if (request->hasParam("dir")) {
@@ -560,6 +604,8 @@ void setup() {
   server.on("/sendRaw", HTTP_POST, handleSendRaw);
   server.on("/hello", HTTP_GET, handleHello);
   server.on("/drives", HTTP_GET, handleDrives);
+  server.on("/mkdirAtari", HTTP_POST, handleMkdirAtari);
+  server.on("/deleteAtari", HTTP_POST, handleDeleteAtari);
   server.serveStatic("/files/", FILESYSTEM, DATA_DIR "/").setCacheControl("no-store");
   server.serveStatic("/", FILESYSTEM, "/web/").setDefaultFile("index.htm");
 
