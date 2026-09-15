@@ -70,6 +70,7 @@ payload0  db 0        ; captured payload[0] byte, read out safely below
 %include "drives.inc"
 %include "mkdir.inc"
 %include "delete.inc"
+%include "rmdir.inc"
 %include "critical_error.inc"
 %include "residentcheck.inc"
 
@@ -136,6 +137,8 @@ pftd_int61_handler:
         call    dispatch_mkdir
         mov     al, [cs:payload0]
         call    dispatch_delete
+        mov     al, [cs:payload0]
+        call    dispatch_rmdir
 
 .no_pending:
         pop     ds

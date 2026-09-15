@@ -1,7 +1,6 @@
 ; delete.inc - DELETE (0x89) command: delete a FILE on the Portfolio.
 ; Files only - int 0x21 AH=0x41 (Unlink), NOT AH=0x3A (RMDIR). Directory
-; deletion is a deliberately separate, not-yet-made protocol decision; do
-; not fold it into this command without one.
+; deletion is its own separate command - see rmdir.inc (0x8A).
 ;
 ; Command byte 0x89 continues the 0x80+ PFTD command space - see hello.inc's
 ; header comment for why that space is safe.
