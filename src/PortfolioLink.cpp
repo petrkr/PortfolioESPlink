@@ -9,6 +9,10 @@ const unsigned char TRANSMIT_CANCEL[3] = {0x00, 0x00, 0x00};
 const unsigned char RECEIVE_FINISH[3] = {0x20, 0x00, 0x03};
 const uint32_t CLOCK_TIMEOUT_US = 2000000;
 const uint32_t DETECT_TIMEOUT_US = 50000;
+// Above this, a single byte handshake is considered anomalously slow (normal
+// case is well under 1ms) - logged at Debug to catch the "transfer degrades
+// to ~1 byte/sec after a long idle period" issue.
+const uint32_t SLOW_BYTE_WARN_US = 10000;
 const TickType_t DETECT_INTERVAL = pdMS_TO_TICKS(100);
 const uint8_t DETECT_MISSES_TO_DISCONNECT = 8;
 const TickType_t JOB_WAIT = pdMS_TO_TICKS(30000);
@@ -35,7 +39,7 @@ void currentDosTimeDate(uint16_t& dosTime, uint16_t& dosDate) {
 }
 }
 
-PortfolioLink::PortfolioLink(Print& log) : log_(log) {}
+PortfolioLink::PortfolioLink(log4mcu::Logger& log) : log_(log) {}
 
 PortfolioLink::~PortfolioLink() {
   free(payload_);
@@ -51,7 +55,7 @@ bool PortfolioLink::begin(const PortfolioPins& pins) {
   jobQueue_ = xQueueCreate(1, sizeof(Job));
 
   if (!payload_ || !controlData_ || !jobQueue_) {
-    log_.println("PortfolioLink: init failed");
+    log_.error("PortfolioLink: init failed");
     return false;
   }
 
@@ -426,6 +430,7 @@ unsigned char PortfolioLink::getBit() {
 
 bool PortfolioLink::receiveByte(unsigned char& out, uint32_t timeoutUs) {
   unsigned char recv = 0;
+  uint32_t start = micros();
 
   for (int i = 0; i < 4; i++) {
     if (!waitClockLow(timeoutUs)) {
@@ -441,11 +446,17 @@ bool PortfolioLink::receiveByte(unsigned char& out, uint32_t timeoutUs) {
     writePort(2);
   }
 
+  uint32_t elapsed = micros() - start;
+  if (elapsed >= SLOW_BYTE_WARN_US) {
+    log_.debugf("receiveByte slow: %u us", static_cast<unsigned>(elapsed));
+  }
+
   out = recv;
   return true;
 }
 
 bool PortfolioLink::sendByte(unsigned char data) {
+  uint32_t start = micros();
   delayMicroseconds(250);
 
   for (int i = 0; i < 4; i++) {
@@ -470,6 +481,11 @@ bool PortfolioLink::sendByte(unsigned char data) {
     }
   }
 
+  uint32_t elapsed = micros() - start;
+  if (elapsed >= SLOW_BYTE_WARN_US) {
+    log_.debugf("sendByte slow: %u us", static_cast<unsigned>(elapsed));
+  }
+
   return true;
 }
 
@@ -481,7 +497,7 @@ bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbo
   unsigned char recv = 0;
   if (!receiveByte(recv, CLOCK_TIMEOUT_US) || recv != 'Z') {
     if (verbosity >= VERB_ERRORS) {
-      log_.println("Portfolio not ready");
+      log_.error("Portfolio not ready");
     }
     return false;
   }
@@ -512,7 +528,7 @@ bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbo
     checksum -= recv;
 
     if (verbosity >= VERB_COUNTER) {
-      log_.printf("Sent %d of %d bytes.\r\n", i + 1, len);
+      log_.debugf("Sent %d of %d bytes.", i + 1, len);
     }
     if (transferTotal_ > 0) {
       transferDone_++;
@@ -523,13 +539,9 @@ bool PortfolioLink::sendBlock(const unsigned char* data, unsigned int len, Verbo
     return false;
   }
 
-  if (verbosity >= VERB_COUNTER) {
-    log_.println();
-  }
-
   if (!receiveByte(recv, CLOCK_TIMEOUT_US) || recv != checksum) {
     if (verbosity >= VERB_ERRORS) {
-      log_.printf("checksum ERR: got %d expected %d\n", recv, checksum);
+      log_.errorf("checksum ERR: got %d expected %d", recv, checksum);
     }
     return false;
   }
@@ -547,7 +559,7 @@ int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbo
   unsigned char recv = 0;
   if (!receiveByte(recv, CLOCK_TIMEOUT_US) || recv != 0x0a5) {
     if (verbosity >= VERB_ERRORS) {
-      log_.printf("Acknowledge ERROR (received %2X instead of A5)\n", recv);
+      log_.errorf("Acknowledge ERROR (received %2X instead of A5)", recv);
     }
     return -1;
   }
@@ -563,7 +575,7 @@ int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbo
 
   if (len > static_cast<unsigned int>(maxLen)) {
     if (verbosity >= VERB_ERRORS) {
-      log_.printf("Receive buffer too small (%d instead of %d bytes).\n", maxLen, len);
+      log_.errorf("Receive buffer too small (%d instead of %d bytes).", maxLen, len);
     }
     return -1;
   }
@@ -576,20 +588,16 @@ int PortfolioLink::receiveBlock(unsigned char* data, int maxLen, Verbosity verbo
     data[i] = recv;
 
     if (verbosity >= VERB_COUNTER) {
-      log_.print(".");
+      log_.debugf("Received %d of %d bytes.", i + 1, len);
     }
     if (transferTotal_ > 0) {
       transferDone_++;
     }
   }
 
-  if (verbosity >= VERB_COUNTER) {
-    log_.println();
-  }
-
   if (!receiveByte(recv, CLOCK_TIMEOUT_US) || static_cast<unsigned char>(256 - recv) != checksum) {
     if (verbosity >= VERB_ERRORS) {
-      log_.printf("checksum ERR %d %d\n", static_cast<unsigned char>(256 - recv), checksum);
+      log_.errorf("checksum ERR %d %d", static_cast<unsigned char>(256 - recv), checksum);
     }
     return -1;
   }
@@ -608,7 +616,7 @@ bool PortfolioLink::detectOnce() {
 }
 
 PortfolioResult PortfolioLink::runList(const char* pattern, String& output) {
-  log_.printf("Fetching directory listing for %s\n", pattern);
+  log_.infof("Fetching directory listing for %s", pattern);
 
   receiveInit_[0] = 6;
   strncpy(reinterpret_cast<char*>(receiveInit_) + 3, pattern, MAX_FILENAME_LEN);
@@ -638,7 +646,7 @@ PortfolioResult PortfolioLink::runList(const char* pattern, String& output) {
 }
 
 PortfolioResult PortfolioLink::runListExt(const char* pattern, String& output, uint32_t& freeBytes, uint32_t& totalBytes) {
-  log_.printf("Fetching extended directory listing for %s\n", pattern);
+  log_.infof("Fetching extended directory listing for %s", pattern);
 
   unsigned char request[RAW_BUFSIZE] = {0};
   request[0] = 0x86;
@@ -720,7 +728,7 @@ PortfolioResult PortfolioLink::runListExt(const char* pattern, String& output, u
 }
 
 PortfolioResult PortfolioLink::runRaw(const uint8_t* data, size_t len, String& response) {
-  log_.printf("Sending raw block, %u bytes\n", static_cast<unsigned>(len));
+  log_.infof("Sending raw block, %u bytes", static_cast<unsigned>(len));
 
   if (!sendBlock(data, len, VERB_ERRORS)) {
     return PortfolioResult::Unknown;
@@ -742,7 +750,7 @@ PortfolioResult PortfolioLink::runRaw(const uint8_t* data, size_t len, String& r
 }
 
 PortfolioResult PortfolioLink::runHello(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities) {
-  log_.println("Probing for PFTD (HELLO)");
+  log_.info("Probing for PFTD (HELLO)");
 
   unsigned char request[RAW_BUFSIZE] = {0};
   request[0] = 0x80;
@@ -770,7 +778,7 @@ PortfolioResult PortfolioLink::runHello(bool& present, uint32_t& buildId, uint8_
 }
 
 PortfolioResult PortfolioLink::runDrives(uint8_t& driveCount) {
-  log_.println("Probing for drive count (DRIVES)");
+  log_.info("Probing for drive count (DRIVES)");
 
   unsigned char request[RAW_BUFSIZE] = {0};
   request[0] = 0x87;
@@ -789,19 +797,19 @@ PortfolioResult PortfolioLink::runDrives(uint8_t& driveCount) {
 }
 
 PortfolioResult PortfolioLink::runUpload(fs::FS& fs, const char* filename, const char* dest, bool overwrite) {
-  log_.println("transmitFile begin");
+  log_.info("transmitFile begin");
 
   File file = fs.open(filename);
   if (!file) {
-    log_.printf("File not found: %s\n", filename);
+    log_.errorf("File not found: %s", filename);
     return PortfolioResult::Unknown;
   }
 
   size_t len = file.size();
-  log_.printf("transmitFile: File length: %d\n", len);
+  log_.infof("transmitFile: File length: %d", len);
 
   if (len > 32 * 1024 * 1024) {
-    log_.printf("Skipping %s.\n", file.name());
+    log_.warnf("Skipping %s.", file.name());
     file.close();
     return PortfolioResult::Unknown;
   }
@@ -834,21 +842,20 @@ PortfolioResult PortfolioLink::runUpload(fs::FS& fs, const char* filename, const
   }
 
   if (controlData_[0] == 0x10) {
-    log_.println("Invalid destination file (bad path or disk full)");
+    log_.error("Invalid destination file (bad path or disk full)");
     file.close();
     return PortfolioResult::InvalidPath;
   }
 
   if (controlData_[0] == 0x20) {
-    log_.print("File exists on Portfolio");
     if (overwrite) {
-      log_.println(" and is being overwritten.");
+      log_.info("File exists on Portfolio and is being overwritten.");
       if (!sendBlock(TRANSMIT_OVERWRITE, sizeof(TRANSMIT_OVERWRITE), VERB_ERRORS)) {
         file.close();
         return PortfolioResult::Unknown;
       }
     } else {
-      log_.println("! Overwrite disabled.");
+      log_.warn("File exists on Portfolio! Overwrite disabled.");
       sendBlock(TRANSMIT_CANCEL, sizeof(TRANSMIT_CANCEL), VERB_ERRORS);
       file.close();
       return PortfolioResult::Unknown;
@@ -857,7 +864,7 @@ PortfolioResult PortfolioLink::runUpload(fs::FS& fs, const char* filename, const
 
   int blocksize = controlData_[1] + (controlData_[2] << 8);
   if (blocksize > static_cast<int>(PAYLOAD_BUFSIZE)) {
-    log_.println("Payload buffer too small");
+    log_.error("Payload buffer too small");
     file.close();
     return PortfolioResult::Unknown;
   }
@@ -890,15 +897,15 @@ PortfolioResult PortfolioLink::runUpload(fs::FS& fs, const char* filename, const
 
   file.close();
 
-  log_.printf("Upload finish response: %02X %02X %02X\n", controlData_[0], controlData_[1], controlData_[2]);
+  log_.infof("Upload finish response: %02X %02X %02X", controlData_[0], controlData_[1], controlData_[2]);
 
   if (controlData_[0] == 0x10) {
-    log_.println("Invalid destination path (bad path or disk full).");
+    log_.error("Invalid destination path (bad path or disk full).");
     return PortfolioResult::InvalidPath;
   }
 
   if (controlData_[0] != 0x20) {
-    log_.println("Transmission failed.");
+    log_.error("Transmission failed.");
     return PortfolioResult::Unknown;
   }
 
@@ -907,10 +914,10 @@ PortfolioResult PortfolioLink::runUpload(fs::FS& fs, const char* filename, const
 }
 
 PortfolioResult PortfolioLink::runDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite) {
-  log_.println("receiveFile begin");
+  log_.info("receiveFile begin");
 
   if (!overwrite && fs.exists(localPath)) {
-    log_.printf("Local file already exists: %s\n", localPath);
+    log_.errorf("Local file already exists: %s", localPath);
     return PortfolioResult::Unknown;
   }
 
@@ -926,23 +933,23 @@ PortfolioResult PortfolioLink::runDownload(fs::FS& fs, const char* pofoPath, con
   }
 
   if (controlData_[0] == 0x10) {
-    log_.println("File not found on Portfolio");
+    log_.error("File not found on Portfolio");
     return PortfolioResult::InvalidPath;
   }
 
   if (controlData_[0] != 0x20) {
-    log_.printf("Unexpected receive response: %02X\n", controlData_[0]);
+    log_.errorf("Unexpected receive response: %02X", controlData_[0]);
     return PortfolioResult::Unknown;
   }
 
   size_t total = controlData_[7] | (static_cast<size_t>(controlData_[8]) << 8) |
                  (static_cast<size_t>(controlData_[9]) << 16) | (static_cast<size_t>(controlData_[10]) << 24);
 
-  log_.printf("receiveFile: File length: %u\n", total);
+  log_.infof("receiveFile: File length: %u", total);
 
   File file = fs.open(localPath, FILE_WRITE);
   if (!file) {
-    log_.printf("Cannot create local file: %s\n", localPath);
+    log_.errorf("Cannot create local file: %s", localPath);
     return PortfolioResult::Unknown;
   }
 

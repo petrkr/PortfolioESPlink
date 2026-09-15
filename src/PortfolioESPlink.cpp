@@ -2,6 +2,7 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 #include <WiFi.h>
+#include <log4mcu.h>
 
 #include "PortfolioLink.h"
 
@@ -19,7 +20,10 @@ const char* host = "portfolioesplink";
 AsyncWebServer server(80);
 File fsUploadFile;
 
-PortfolioLink portfolio(DBG_OUTPUT_PORT);
+log4mcu::SerialLogAppender logAppender(DBG_OUTPUT_PORT);
+log4mcu::Logger& log_ = log4mcu::Logger::get("main");
+
+PortfolioLink portfolio;
 
 const char* statusText(PortfolioStatus status) {
   switch (status) {
@@ -161,8 +165,7 @@ void handleFileUpload(AsyncWebServerRequest* request,
   String fsPath = String(DATA_DIR) + relPath;
 
   if (index == 0) {
-    DBG_OUTPUT_PORT.print("handleFileUpload Name: ");
-    DBG_OUTPUT_PORT.println(fsPath);
+    log_.infof("handleFileUpload Name: %s", fsPath.c_str());
     fsUploadFile = FILESYSTEM.open(fsPath, FILE_WRITE);
   }
 
@@ -178,9 +181,7 @@ void handleFileUpload(AsyncWebServerRequest* request,
     fsUploadFile.close();
   }
 
-  DBG_OUTPUT_PORT.print("File ");
-  DBG_OUTPUT_PORT.print(fsPath);
-  DBG_OUTPUT_PORT.println(" uploaded");
+  log_.infof("File %s uploaded", fsPath.c_str());
 
   if (!request->hasParam("toAtari")) {
     request->send(200, "text/plain", "Uploaded to ESP32");
@@ -192,7 +193,7 @@ void handleFileUpload(AsyncWebServerRequest* request,
   if (queueSendToAtari(fsPath, destDir, overwrite)) {
     request->send(202, "text/plain", "Upload queued");
   } else {
-    DBG_OUTPUT_PORT.println("Upload job rejected");
+    log_.warn("Upload job rejected");
     request->send(409, "text/plain", "Portfolio busy");
   }
 }
@@ -204,7 +205,7 @@ void handleFileListAtari(AsyncWebServerRequest* request) {
   }
 
   String path = request->getParam("dir")->value();
-  DBG_OUTPUT_PORT.println("handleFileList: " + path);
+  log_.infof("handleFileList: %s", path.c_str());
 
   String files;
   if (portfolio.listFiles(path.c_str(), files) != PortfolioResult::Ok) {
@@ -268,7 +269,7 @@ void handleFileListAtariExt(AsyncWebServerRequest* request) {
   }
 
   String path = request->getParam("dir")->value();
-  DBG_OUTPUT_PORT.println("handleFileListExt: " + path);
+  log_.infof("handleFileListExt: %s", path.c_str());
 
   String entries;
   uint32_t freeBytes = 0;
@@ -487,21 +488,24 @@ void setup() {
   DBG_OUTPUT_PORT.begin(115200);
   delay(250);
 
-  DBG_OUTPUT_PORT.printf("PortfolioESPLink 0.3 - (c) 2026 by Petr Kracik\n");
-  DBG_OUTPUT_PORT.printf("based on Transfolio 1.0.1 - (c) 2018 by Klaus Peichl\n");
+  log4mcu::Logger::setAppender(&logAppender);
+  log4mcu::Logger::setGlobalMinLevel(log4mcu::LogLevel::Info);
+
+  log_.info("PortfolioESPLink 0.3 - (c) 2026 by Petr Kracik");
+  log_.info("based on Transfolio 1.0.1 - (c) 2018 by Klaus Peichl");
 
   pinMode(LED2, OUTPUT);
   pinMode(LED3, OUTPUT);
 
-  DBG_OUTPUT_PORT.println("Setting up Portfolio link");
+  log_.info("Setting up Portfolio link");
   if (!portfolio.begin({7, 5, 8, 6})) {
-    DBG_OUTPUT_PORT.println("Portfolio link init failed");
+    log_.error("Portfolio link init failed");
     return;
   }
 
-  DBG_OUTPUT_PORT.println("Opening filesystem");
+  log_.info("Opening filesystem");
   if (!FILESYSTEM.begin()) {
-    DBG_OUTPUT_PORT.println("Corrupted or empty filesystem, formatting");
+    log_.warn("Corrupted or empty filesystem, formatting");
     FILESYSTEM.format();
     FILESYSTEM.begin();
   }
@@ -515,13 +519,11 @@ void setup() {
   while (file) {
     String fileName = file.name();
     size_t fileSize = file.size();
-    DBG_OUTPUT_PORT.printf("FS File: %s, size: %s\n", fileName.c_str(), formatBytes(fileSize).c_str());
+    log_.infof("FS File: %s, size: %s", fileName.c_str(), formatBytes(fileSize).c_str());
     file = root.openNextFile();
   }
-  DBG_OUTPUT_PORT.println();
 
-  DBG_OUTPUT_PORT.print("Connecting to ");
-  DBG_OUTPUT_PORT.println(ssid);
+  log_.infof("Connecting to %s", ssid);
   if (String(WiFi.SSID()) != String(ssid)) {
     WiFi.mode(WIFI_STA);
     WiFi.setHostname(host);
@@ -530,12 +532,9 @@ void setup() {
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    DBG_OUTPUT_PORT.print(".");
   }
 
-  DBG_OUTPUT_PORT.println();
-  DBG_OUTPUT_PORT.print("Connected! IP address: ");
-  DBG_OUTPUT_PORT.println(WiFi.localIP());
+  log_.infof("Connected! IP address: %s", WiFi.localIP().toString().c_str());
 
   // UTC, no DST - used to timestamp files uploaded to the Portfolio (see
   // PortfolioLink::runUpload). Uses the ESP32 core's built-in SNTP client

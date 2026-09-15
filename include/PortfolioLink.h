@@ -7,6 +7,7 @@
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
+#include <log4mcu.h>
 
 struct PortfolioPins {
   uint8_t outData;
@@ -39,7 +40,7 @@ public:
   static constexpr size_t CONTROL_BUFSIZE = 100;
   static constexpr size_t MAX_FILENAME_LEN = 79;
 
-  explicit PortfolioLink(Print& log = Serial);
+  explicit PortfolioLink(log4mcu::Logger& log = log4mcu::Logger::get("pofo"));
   ~PortfolioLink();
 
   bool begin(const PortfolioPins& pins);
@@ -128,7 +129,7 @@ private:
   PortfolioResult runHello(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities);
   PortfolioResult runDrives(uint8_t& driveCount);
 
-  Print& log_;
+  log4mcu::Logger& log_;
   PortfolioPins pins_{};
   QueueHandle_t jobQueue_ = nullptr;
   TaskHandle_t task_ = nullptr;
