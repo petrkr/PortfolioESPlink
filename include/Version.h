@@ -5,6 +5,6 @@
 // change that should be distinguishable over /status - same convention as
 // PFTD's own BUILD_ID (pofo-driver/version.inc), just a separate counter
 // since this firmware and the Atari-side TSR are built/flashed separately.
-#define FW_BUILD_ID 0x00000002
+#define FW_BUILD_ID 0x00000005
 
 #endif

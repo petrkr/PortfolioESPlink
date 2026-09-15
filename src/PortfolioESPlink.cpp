@@ -521,6 +521,51 @@ void handleDeleteAtari(AsyncWebServerRequest* request) {
   request->send(200, "text/plain", "Deleted");
 }
 
+void handleRmdirAtari(AsyncWebServerRequest* request) {
+  if (!request->hasParam("path")) {
+    request->send(500, "text/plain", "BAD ARGS");
+    return;
+  }
+
+  String pofoPath = request->getParam("path")->value();
+  uint8_t errCode = 0;
+  PortfolioResult result = portfolio.rmdirAtari(pofoPath.c_str(), errCode);
+
+  if (result == PortfolioResult::Unknown) {
+    request->send(500, "text/plain", "rmdir failed: " + String(resultText(result)));
+    return;
+  }
+  if (result == PortfolioResult::InvalidPath) {
+    request->send(409, "text/plain", "rmdir failed, errcode=" + String(errCode));
+    return;
+  }
+
+  request->send(200, "text/plain", "Directory removed");
+}
+
+void handleRenameAtari(AsyncWebServerRequest* request) {
+  if (!request->hasParam("path") || !request->hasParam("newPath")) {
+    request->send(500, "text/plain", "BAD ARGS");
+    return;
+  }
+
+  String oldPath = request->getParam("path")->value();
+  String newPath = request->getParam("newPath")->value();
+  uint8_t errCode = 0;
+  PortfolioResult result = portfolio.renameAtari(oldPath.c_str(), newPath.c_str(), errCode);
+
+  if (result == PortfolioResult::Unknown) {
+    request->send(500, "text/plain", "rename failed: " + String(resultText(result)));
+    return;
+  }
+  if (result == PortfolioResult::InvalidPath) {
+    request->send(409, "text/plain", "rename failed, errcode=" + String(errCode));
+    return;
+  }
+
+  request->send(200, "text/plain", "Renamed");
+}
+
 void handleFileListESP32(AsyncWebServerRequest* request) {
   String dir = "/";
   if (request->hasParam("dir")) {
@@ -606,6 +651,8 @@ void setup() {
   server.on("/drives", HTTP_GET, handleDrives);
   server.on("/mkdirAtari", HTTP_POST, handleMkdirAtari);
   server.on("/deleteAtari", HTTP_POST, handleDeleteAtari);
+  server.on("/rmdirAtari", HTTP_POST, handleRmdirAtari);
+  server.on("/renameAtari", HTTP_POST, handleRenameAtari);
   server.serveStatic("/files/", FILESYSTEM, DATA_DIR "/").setCacheControl("no-store");
   server.serveStatic("/", FILESYSTEM, "/web/").setDefaultFile("index.htm");
 

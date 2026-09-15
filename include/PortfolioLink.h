@@ -66,6 +66,8 @@ public:
   PortfolioResult listDrives(uint8_t& driveCount);
   PortfolioResult mkdirAtari(const char* pofoPath, uint8_t& errCode);
   PortfolioResult deleteAtari(const char* pofoPath, uint8_t& errCode);
+  PortfolioResult rmdirAtari(const char* pofoPath, uint8_t& errCode);
+  PortfolioResult renameAtari(const char* oldPofoPath, const char* newPofoPath, uint8_t& errCode);
 
 private:
   enum Verbosity {
@@ -84,7 +86,9 @@ private:
     Hello,
     Drives,
     Mkdir,
-    Delete
+    Delete,
+    Rmdir,
+    Rename
   };
 
   static constexpr size_t RAW_BUFSIZE = 90;
@@ -94,6 +98,7 @@ private:
     fs::FS* fs;
     char localPath[MAX_FILENAME_LEN + 1];
     char pofoPath[MAX_FILENAME_LEN + 1];
+    char newPofoPath[MAX_FILENAME_LEN + 1];
     bool overwrite;
     String* listOutput;
     PortfolioResult* resultOut;
@@ -135,6 +140,8 @@ private:
   PortfolioResult runDrives(uint8_t& driveCount);
   PortfolioResult runMkdir(const char* pofoPath, uint8_t& errCode);
   PortfolioResult runDelete(const char* pofoPath, uint8_t& errCode);
+  PortfolioResult runRmdir(const char* pofoPath, uint8_t& errCode);
+  PortfolioResult runRename(const char* oldPofoPath, const char* newPofoPath, uint8_t& errCode);
 
   log4mcu::Logger& log_;
   PortfolioPins pins_{};

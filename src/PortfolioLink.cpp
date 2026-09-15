@@ -374,6 +374,70 @@ PortfolioResult PortfolioLink::deleteAtari(const char* pofoPath, uint8_t& errCod
   return result;
 }
 
+PortfolioResult PortfolioLink::rmdirAtari(const char* pofoPath, uint8_t& errCode) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  PortfolioResult result = PortfolioResult::Unknown;
+  errCode = 0xFF;
+
+  Job job{};
+  job.type = JobType::Rmdir;
+  job.resultOut = &result;
+  strncpy(job.pofoPath, pofoPath, MAX_FILENAME_LEN);
+  job.pofoPath[MAX_FILENAME_LEN] = '\0';
+  job.errCode = &errCode;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return result;
+}
+
+PortfolioResult PortfolioLink::renameAtari(const char* oldPofoPath, const char* newPofoPath, uint8_t& errCode) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  PortfolioResult result = PortfolioResult::Unknown;
+  errCode = 0xFF;
+
+  Job job{};
+  job.type = JobType::Rename;
+  job.resultOut = &result;
+  strncpy(job.pofoPath, oldPofoPath, MAX_FILENAME_LEN);
+  job.pofoPath[MAX_FILENAME_LEN] = '\0';
+  strncpy(job.newPofoPath, newPofoPath, MAX_FILENAME_LEN);
+  job.newPofoPath[MAX_FILENAME_LEN] = '\0';
+  job.errCode = &errCode;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return result;
+}
+
 void PortfolioLink::taskThunk(void* arg) {
   static_cast<PortfolioLink*>(arg)->taskLoop();
 }
@@ -404,6 +468,10 @@ void PortfolioLink::taskLoop() {
         result = runMkdir(job.pofoPath, *job.errCode);
       } else if (job.type == JobType::Delete && job.errCode) {
         result = runDelete(job.pofoPath, *job.errCode);
+      } else if (job.type == JobType::Rmdir && job.errCode) {
+        result = runRmdir(job.pofoPath, *job.errCode);
+      } else if (job.type == JobType::Rename && job.errCode) {
+        result = runRename(job.pofoPath, job.newPofoPath, *job.errCode);
       } else {
         result = PortfolioResult::Unknown;
       }
@@ -919,6 +987,93 @@ PortfolioResult PortfolioLink::runDelete(const char* pofoPath, uint8_t& errCode)
 
   if (controlData_[0] != 0x20) {
     log_.errorf("Unexpected delete response: %02X", controlData_[0]);
+    return PortfolioResult::Unknown;
+  }
+
+  errCode = 0;
+  return PortfolioResult::Ok;
+}
+
+PortfolioResult PortfolioLink::runRmdir(const char* pofoPath, uint8_t& errCode) {
+  log_.infof("Removing directory on Portfolio: %s", pofoPath);
+
+  unsigned char request[RAW_BUFSIZE] = {0};
+  request[0] = 0x8A;
+  request[2] = 0x70;
+  strncpy(reinterpret_cast<char*>(request) + 3, pofoPath, MAX_FILENAME_LEN);
+  request[sizeof(request) - 1] = '\0';
+
+  if (!sendBlock(request, sizeof(request), VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (receiveBlock(controlData_, CONTROL_BUFSIZE, VERB_ERRORS) < 2) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (controlData_[0] == 0x10) {
+    errCode = controlData_[1];
+    log_.errorf("Rmdir failed, errcode=%u", controlData_[1]);
+    return PortfolioResult::InvalidPath;
+  }
+
+  if (controlData_[0] != 0x20) {
+    log_.errorf("Unexpected rmdir response: %02X", controlData_[0]);
+    return PortfolioResult::Unknown;
+  }
+
+  errCode = 0;
+  return PortfolioResult::Ok;
+}
+
+PortfolioResult PortfolioLink::runRename(const char* oldPofoPath, const char* newPofoPath, uint8_t& errCode) {
+  log_.infof("Renaming on Portfolio: %s -> %s", oldPofoPath, newPofoPath);
+
+  // Two ASCIIZ paths back-to-back after the 3-byte header, unlike the
+  // single-path commands (mkdir/delete/rmdir). The wire request must still
+  // fit in RAW_BUFSIZE (90) total - that's not just a convention, it's the
+  // ROM's own fixed receive-block buffer size (see ROM_RESEARCH_NOTES.md's
+  // File Transfer Server dispatch disassembly, `push 0x5A`/90 decimal) -
+  // sending more than that overruns the ROM's stack-frame buffer, observed
+  // as a hard crash/disconnect on real hardware. The buffer below is sized
+  // generously (matching rename.inc's rename_old_path/rename_new_path,
+  // each resb 80 on the Atari side) purely as local scratch space for
+  // building the two ASCIIZ strings - only the bytes actually used
+  // (3 + oldLen + 1 + newLen + 1) are ever sent, never sizeof(request).
+  constexpr size_t kRenameBufSize = 3 + 2 * (MAX_FILENAME_LEN + 1);
+  unsigned char request[kRenameBufSize] = {0};
+  request[0] = 0x8B;
+  request[2] = 0x70;
+  strncpy(reinterpret_cast<char*>(request) + 3, oldPofoPath, MAX_FILENAME_LEN);
+  request[3 + MAX_FILENAME_LEN] = '\0';
+  size_t oldLen = strlen(reinterpret_cast<char*>(request) + 3);
+  strncpy(reinterpret_cast<char*>(request) + 3 + oldLen + 1, newPofoPath, MAX_FILENAME_LEN);
+  request[kRenameBufSize - 1] = '\0';
+  size_t newLen = strlen(reinterpret_cast<char*>(request) + 3 + oldLen + 1);
+
+  size_t wireLen = 3 + oldLen + 1 + newLen + 1;
+  if (wireLen > RAW_BUFSIZE) {
+    log_.errorf("Rename paths too long for one request: %u bytes (max %u)", static_cast<unsigned>(wireLen),
+                static_cast<unsigned>(RAW_BUFSIZE));
+    return PortfolioResult::Unknown;
+  }
+
+  if (!sendBlock(request, wireLen, VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (receiveBlock(controlData_, CONTROL_BUFSIZE, VERB_ERRORS) < 2) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (controlData_[0] == 0x10) {
+    errCode = controlData_[1];
+    log_.errorf("Rename failed, errcode=%u", controlData_[1]);
+    return PortfolioResult::InvalidPath;
+  }
+
+  if (controlData_[0] != 0x20) {
+    log_.errorf("Unexpected rename response: %02X", controlData_[0]);
     return PortfolioResult::Unknown;
   }
 
