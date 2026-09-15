@@ -224,6 +224,23 @@ button:disabled {
   letter-spacing: normal;
 }
 
+.drives {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px;
+}
+
+.drives button {
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
+.drives button.active {
+  background: var(--nc-accent);
+  color: #000;
+}
+
 .transfer-arrows {
   display: flex;
   flex-direction: column;

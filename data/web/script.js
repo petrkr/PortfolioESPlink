@@ -16,15 +16,19 @@ const pftdStatus = document.getElementById("pftdStatus");
 const atariUpBtn = document.getElementById("atariUpBtn");
 const atariPath = document.getElementById("atariPath");
 const atariSpace = document.getElementById("atariSpace");
+const atariDrives = document.getElementById("atariDrives");
 const espUpBtn = document.getElementById("espUpBtn");
 
 const CAP_LIST_EXT = 0x01;
+const CAP_DRIVES = 0x02;
+const FALLBACK_DRIVES = ["A", "B", "C"];
 
 const selectedEsp = new Set();
 const selectedAtari = new Set();
 let lastAtariDir = "";
 let currentEspDir = "/";
 let pftdCapabilities = 0;
+let atariDrivesLoaded = false;
 let popoverOpen = false;
 let popoverWasActive = false;
 
@@ -79,6 +83,56 @@ atariUpBtn.addEventListener("click", () => {
   listForm.requestSubmit();
 });
 
+function atariCurrentDrive() {
+  const dir = lastAtariDir || atariPath.value;
+  return dir.length >= 2 && dir[1] === ":" ? dir[0].toUpperCase() : null;
+}
+
+function updateAtariDriveSelection() {
+  const current = atariCurrentDrive();
+  for (const btn of atariDrives.children) {
+    btn.classList.toggle("active", btn.dataset.drive === current);
+  }
+}
+
+function renderAtariDriveButtons(drives) {
+  atariDrives.innerHTML = "";
+  for (const drive of drives) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = `${drive}:`;
+    btn.dataset.drive = drive;
+    btn.addEventListener("click", () => {
+      atariPath.value = `${drive}:\\*.*`;
+      listForm.requestSubmit();
+    });
+    atariDrives.appendChild(btn);
+  }
+  updateAtariDriveSelection();
+}
+
+async function loadAtariDrives() {
+  if (atariDrivesLoaded) return;
+
+  if (!(pftdCapabilities & CAP_DRIVES)) {
+    renderAtariDriveButtons(FALLBACK_DRIVES);
+    return;
+  }
+
+  try {
+    const response = await fetch("/drives");
+    if (!response.ok) {
+      renderAtariDriveButtons(FALLBACK_DRIVES);
+      return;
+    }
+    const data = await response.json();
+    renderAtariDriveButtons(data.drives);
+    atariDrivesLoaded = true;
+  } catch {
+    renderAtariDriveButtons(FALLBACK_DRIVES);
+  }
+}
+
 async function waitForIdle() {
   for (;;) {
     const response = await fetch("/status");
@@ -121,6 +175,7 @@ async function refreshStatus() {
       pftdStatus.textContent = "";
       pftdStatus.title = "";
     }
+    loadAtariDrives();
 
     const isActive = data.status === "busy" || data.phase === "pofo_upload";
     if (isActive) {
@@ -135,6 +190,7 @@ async function refreshStatus() {
     pftdCapabilities = 0;
     pftdStatus.textContent = "";
     pftdStatus.title = "";
+    loadAtariDrives();
   }
 }
 
@@ -407,6 +463,7 @@ listForm.addEventListener("submit", async (event) => {
   }
   refreshStatus();
   atariUpBtn.disabled = atariParentPath(dir) === null;
+  updateAtariDriveSelection();
 });
 
 async function uploadFile(file) {
