@@ -384,6 +384,18 @@ listForm.addEventListener("submit", async (event) => {
 
     if (isDir) {
       attachRowOpenFolder(row, () => {
+        if (item.name === ".") {
+          listForm.requestSubmit();
+          return;
+        }
+        if (item.name === "..") {
+          const parent = atariParentPath(lastAtariDir);
+          if (parent !== null) {
+            atariPath.value = parent;
+          }
+          listForm.requestSubmit();
+          return;
+        }
         const dirPrefix = atariDirPrefix();
         atariPath.value = `${dirPrefix}${item.name}\\*.*`;
         listForm.requestSubmit();
