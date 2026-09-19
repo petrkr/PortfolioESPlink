@@ -127,6 +127,7 @@ private:
   static void taskThunk(void* arg);
   void taskLoop();
   void finishJob(PortfolioResult result);
+  bool waitForJob(SemaphoreHandle_t done);
 
   void setupPort();
   void writePort(unsigned char data);

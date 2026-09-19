@@ -2,6 +2,7 @@
 
 #include <string.h>
 #include <time.h>
+#include <esp_task_wdt.h>
 
 namespace {
 const unsigned char TRANSMIT_OVERWRITE[3] = {0x05, 0x00, 0x70};
@@ -15,7 +16,6 @@ const uint32_t DETECT_TIMEOUT_US = 50000;
 const uint32_t SLOW_BYTE_WARN_US = 10000;
 const TickType_t DETECT_INTERVAL = pdMS_TO_TICKS(100);
 const uint8_t DETECT_MISSES_TO_DISCONNECT = 8;
-const TickType_t JOB_WAIT = pdMS_TO_TICKS(30000);
 
 // currentDosTimeDate: current UTC time as a DOS packed time/date pair (same
 // encoding runListExt decodes from the LIST extended DTA - see list.inc).
@@ -44,6 +44,21 @@ PortfolioLink::PortfolioLink(log4mcu::Logger& log) : log_(log) {}
 PortfolioLink::~PortfolioLink() {
   free(payload_);
   free(controlData_);
+}
+
+bool PortfolioLink::waitForJob(SemaphoreHandle_t done) {
+  const TickType_t serviceInterval = pdMS_TO_TICKS(100);
+
+  for (;;) {
+    if (xSemaphoreTake(done, serviceInterval) == pdTRUE) {
+      return true;
+    }
+
+    // Synchronous HTTP handlers run in async_tcp, which is watched by the
+    // task watchdog. Keep its subscription alive while the Portfolio task
+    // waits for a missing or unresponsive Portfolio.
+    esp_task_wdt_reset();
+  }
 }
 
 bool PortfolioLink::begin(const PortfolioPins& pins) {
@@ -171,7 +186,7 @@ PortfolioResult PortfolioLink::listFiles(const char* pattern, String& output) {
   }
 
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || !waitForJob(job.done)) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     output = "";
@@ -206,7 +221,7 @@ PortfolioResult PortfolioLink::listFilesExtended(const char* pattern, String& ou
   }
 
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || !waitForJob(job.done)) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     output = "";
@@ -237,7 +252,7 @@ PortfolioResult PortfolioLink::sendRaw(const uint8_t* data, size_t len, String& 
   }
 
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || !waitForJob(job.done)) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     response = "";
@@ -273,7 +288,7 @@ PortfolioResult PortfolioLink::helloDaemon(bool& present, uint32_t& buildId, uin
   }
 
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || !waitForJob(job.done)) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     return PortfolioResult::Unknown;
@@ -302,7 +317,7 @@ PortfolioResult PortfolioLink::listDrives(uint8_t& driveCount) {
   }
 
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || !waitForJob(job.done)) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     return PortfolioResult::Unknown;
@@ -333,7 +348,7 @@ PortfolioResult PortfolioLink::mkdirAtari(const char* pofoPath, uint8_t& errCode
   }
 
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || !waitForJob(job.done)) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     return PortfolioResult::Unknown;
@@ -364,7 +379,7 @@ PortfolioResult PortfolioLink::deleteAtari(const char* pofoPath, uint8_t& errCod
   }
 
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || !waitForJob(job.done)) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     return PortfolioResult::Unknown;
@@ -395,7 +410,7 @@ PortfolioResult PortfolioLink::rmdirAtari(const char* pofoPath, uint8_t& errCode
   }
 
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || !waitForJob(job.done)) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     return PortfolioResult::Unknown;
@@ -428,7 +443,7 @@ PortfolioResult PortfolioLink::renameAtari(const char* oldPofoPath, const char* 
   }
 
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || !waitForJob(job.done)) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     return PortfolioResult::Unknown;
@@ -461,7 +476,7 @@ PortfolioResult PortfolioLink::copyAtari(const char* srcPofoPath, const char* ds
   }
 
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || !waitForJob(job.done)) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     return PortfolioResult::Unknown;
@@ -492,7 +507,7 @@ PortfolioResult PortfolioLink::getDatetimeAtari(uint16_t& dosDate, uint16_t& dos
   }
 
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || !waitForJob(job.done)) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     return PortfolioResult::Unknown;
@@ -523,7 +538,7 @@ PortfolioResult PortfolioLink::setDatetimeAtari(uint16_t dosDate, uint16_t dosTi
   }
 
   status_ = PortfolioStatus::Busy;
-  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || !waitForJob(job.done)) {
     vSemaphoreDelete(job.done);
     status_ = PortfolioStatus::Disconnected;
     return PortfolioResult::Unknown;
