@@ -471,6 +471,68 @@ PortfolioResult PortfolioLink::copyAtari(const char* srcPofoPath, const char* ds
   return result;
 }
 
+PortfolioResult PortfolioLink::getDatetimeAtari(uint16_t& dosDate, uint16_t& dosTime) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  PortfolioResult result = PortfolioResult::Unknown;
+  dosDate = 0;
+  dosTime = 0;
+
+  Job job{};
+  job.type = JobType::GetDatetime;
+  job.resultOut = &result;
+  job.dosDate = &dosDate;
+  job.dosTime = &dosTime;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return result;
+}
+
+PortfolioResult PortfolioLink::setDatetimeAtari(uint16_t dosDate, uint16_t dosTime, uint8_t& errCode) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  PortfolioResult result = PortfolioResult::Unknown;
+  errCode = 0xFF;
+
+  Job job{};
+  job.type = JobType::SetDatetime;
+  job.resultOut = &result;
+  job.dosDate = &dosDate;
+  job.dosTime = &dosTime;
+  job.errCode = &errCode;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return result;
+}
+
 void PortfolioLink::taskThunk(void* arg) {
   static_cast<PortfolioLink*>(arg)->taskLoop();
 }
@@ -507,6 +569,10 @@ void PortfolioLink::taskLoop() {
         result = runRename(job.pofoPath, job.newPofoPath, *job.errCode);
       } else if (job.type == JobType::Copy && job.errCode) {
         result = runCopy(job.pofoPath, job.newPofoPath, *job.errCode);
+      } else if (job.type == JobType::GetDatetime && job.dosDate && job.dosTime) {
+        result = runGetDatetime(*job.dosDate, *job.dosTime);
+      } else if (job.type == JobType::SetDatetime && job.dosDate && job.dosTime && job.errCode) {
+        result = runSetDatetime(*job.dosDate, *job.dosTime, *job.errCode);
       } else {
         result = PortfolioResult::Unknown;
       }
@@ -1210,6 +1276,59 @@ PortfolioResult PortfolioLink::runCopy(const char* srcPofoPath, const char* dstP
 
   if (controlData_[0] != 0x20) {
     log_.errorf("Unexpected copy response: %02X", controlData_[0]);
+    return PortfolioResult::Unknown;
+  }
+
+  errCode = 0;
+  return PortfolioResult::Ok;
+}
+
+PortfolioResult PortfolioLink::runGetDatetime(uint16_t& dosDate, uint16_t& dosTime) {
+  log_.info("Reading Portfolio date and time");
+
+  unsigned char request[RAW_BUFSIZE] = {0};
+  request[0] = 0x8D;
+
+  if (!sendBlock(request, sizeof(request), VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (receiveBlock(controlData_, CONTROL_BUFSIZE, VERB_ERRORS) < 4) {
+    return PortfolioResult::Unknown;
+  }
+
+  dosDate = static_cast<uint16_t>(controlData_[0]) | (static_cast<uint16_t>(controlData_[1]) << 8);
+  dosTime = static_cast<uint16_t>(controlData_[2]) | (static_cast<uint16_t>(controlData_[3]) << 8);
+  return PortfolioResult::Ok;
+}
+
+PortfolioResult PortfolioLink::runSetDatetime(uint16_t dosDate, uint16_t dosTime, uint8_t& errCode) {
+  log_.info("Setting Portfolio date and time");
+
+  unsigned char request[RAW_BUFSIZE] = {0};
+  request[0] = 0x8E;
+  request[2] = 0x70;
+  request[3] = dosDate & 0xFF;
+  request[4] = dosDate >> 8;
+  request[5] = dosTime & 0xFF;
+  request[6] = dosTime >> 8;
+
+  if (!sendBlock(request, sizeof(request), VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (receiveBlock(controlData_, CONTROL_BUFSIZE, VERB_ERRORS) < 2) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (controlData_[0] == 0x10) {
+    errCode = controlData_[1];
+    log_.errorf("Set datetime failed, errcode=%u", controlData_[1]);
+    return PortfolioResult::InvalidPath;
+  }
+
+  if (controlData_[0] != 0x20) {
+    log_.errorf("Unexpected set datetime response: %02X", controlData_[0]);
     return PortfolioResult::Unknown;
   }
 

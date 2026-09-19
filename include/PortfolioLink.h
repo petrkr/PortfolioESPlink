@@ -69,6 +69,8 @@ public:
   PortfolioResult rmdirAtari(const char* pofoPath, uint8_t& errCode);
   PortfolioResult renameAtari(const char* oldPofoPath, const char* newPofoPath, uint8_t& errCode);
   PortfolioResult copyAtari(const char* srcPofoPath, const char* dstPofoPath, uint8_t& errCode);
+  PortfolioResult getDatetimeAtari(uint16_t& dosDate, uint16_t& dosTime);
+  PortfolioResult setDatetimeAtari(uint16_t dosDate, uint16_t dosTime, uint8_t& errCode);
 
 private:
   enum Verbosity {
@@ -90,7 +92,9 @@ private:
     Delete,
     Rmdir,
     Rename,
-    Copy
+    Copy,
+    GetDatetime,
+    SetDatetime
   };
 
   static constexpr size_t RAW_BUFSIZE = 90;
@@ -116,6 +120,8 @@ private:
     uint32_t* listTotalBytes;
     uint8_t* driveCount;
     uint8_t* errCode;
+    uint16_t* dosDate;
+    uint16_t* dosTime;
   };
 
   static void taskThunk(void* arg);
@@ -145,6 +151,8 @@ private:
   PortfolioResult runRmdir(const char* pofoPath, uint8_t& errCode);
   PortfolioResult runRename(const char* oldPofoPath, const char* newPofoPath, uint8_t& errCode);
   PortfolioResult runCopy(const char* srcPofoPath, const char* dstPofoPath, uint8_t& errCode);
+  PortfolioResult runGetDatetime(uint16_t& dosDate, uint16_t& dosTime);
+  PortfolioResult runSetDatetime(uint16_t dosDate, uint16_t dosTime, uint8_t& errCode);
 
   log4mcu::Logger& log_;
   PortfolioPins pins_{};
