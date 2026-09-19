@@ -438,6 +438,39 @@ PortfolioResult PortfolioLink::renameAtari(const char* oldPofoPath, const char* 
   return result;
 }
 
+PortfolioResult PortfolioLink::copyAtari(const char* srcPofoPath, const char* dstPofoPath, uint8_t& errCode) {
+  if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
+    return PortfolioResult::Unknown;
+  }
+
+  PortfolioResult result = PortfolioResult::Unknown;
+  errCode = 0xFF;
+
+  Job job{};
+  job.type = JobType::Copy;
+  job.resultOut = &result;
+  strncpy(job.pofoPath, srcPofoPath, MAX_FILENAME_LEN);
+  job.pofoPath[MAX_FILENAME_LEN] = '\0';
+  strncpy(job.newPofoPath, dstPofoPath, MAX_FILENAME_LEN);
+  job.newPofoPath[MAX_FILENAME_LEN] = '\0';
+  job.errCode = &errCode;
+  job.done = xSemaphoreCreateBinary();
+
+  if (!job.done) {
+    return PortfolioResult::Unknown;
+  }
+
+  status_ = PortfolioStatus::Busy;
+  if (xQueueSend(jobQueue_, &job, 0) != pdTRUE || xSemaphoreTake(job.done, JOB_WAIT) != pdTRUE) {
+    vSemaphoreDelete(job.done);
+    status_ = PortfolioStatus::Disconnected;
+    return PortfolioResult::Unknown;
+  }
+
+  vSemaphoreDelete(job.done);
+  return result;
+}
+
 void PortfolioLink::taskThunk(void* arg) {
   static_cast<PortfolioLink*>(arg)->taskLoop();
 }
@@ -472,6 +505,8 @@ void PortfolioLink::taskLoop() {
         result = runRmdir(job.pofoPath, *job.errCode);
       } else if (job.type == JobType::Rename && job.errCode) {
         result = runRename(job.pofoPath, job.newPofoPath, *job.errCode);
+      } else if (job.type == JobType::Copy && job.errCode) {
+        result = runCopy(job.pofoPath, job.newPofoPath, *job.errCode);
       } else {
         result = PortfolioResult::Unknown;
       }
@@ -1126,6 +1161,55 @@ PortfolioResult PortfolioLink::runRename(const char* oldPofoPath, const char* ne
 
   if (controlData_[0] != 0x20) {
     log_.errorf("Unexpected rename response: %02X", controlData_[0]);
+    return PortfolioResult::Unknown;
+  }
+
+  errCode = 0;
+  return PortfolioResult::Ok;
+}
+
+PortfolioResult PortfolioLink::runCopy(const char* srcPofoPath, const char* dstPofoPath, uint8_t& errCode) {
+  log_.infof("Copying on Portfolio: %s -> %s", srcPofoPath, dstPofoPath);
+
+  // Same two-ASCIIZ-path wire shape as runRename (see its comment for the
+  // RAW_BUFSIZE=90 rationale) - COPY (0x8C) reuses the identical request
+  // layout, just a different command byte and a server-side implementation
+  // that does a real read/write data copy instead of a directory-entry
+  // rewrite (see POFOSCAB/copy.inc).
+  constexpr size_t kCopyBufSize = 3 + 2 * (MAX_FILENAME_LEN + 1);
+  unsigned char request[kCopyBufSize] = {0};
+  request[0] = 0x8C;
+  request[2] = 0x70;
+  strncpy(reinterpret_cast<char*>(request) + 3, srcPofoPath, MAX_FILENAME_LEN);
+  request[3 + MAX_FILENAME_LEN] = '\0';
+  size_t srcLen = strlen(reinterpret_cast<char*>(request) + 3);
+  strncpy(reinterpret_cast<char*>(request) + 3 + srcLen + 1, dstPofoPath, MAX_FILENAME_LEN);
+  request[kCopyBufSize - 1] = '\0';
+  size_t dstLen = strlen(reinterpret_cast<char*>(request) + 3 + srcLen + 1);
+
+  size_t wireLen = 3 + srcLen + 1 + dstLen + 1;
+  if (wireLen > RAW_BUFSIZE) {
+    log_.errorf("Copy paths too long for one request: %u bytes (max %u)", static_cast<unsigned>(wireLen),
+                static_cast<unsigned>(RAW_BUFSIZE));
+    return PortfolioResult::Unknown;
+  }
+
+  if (!sendBlock(request, wireLen, VERB_ERRORS)) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (receiveBlock(controlData_, CONTROL_BUFSIZE, VERB_ERRORS) < 2) {
+    return PortfolioResult::Unknown;
+  }
+
+  if (controlData_[0] == 0x10) {
+    errCode = controlData_[1];
+    log_.errorf("Copy failed, errcode=%u", controlData_[1]);
+    return PortfolioResult::InvalidPath;
+  }
+
+  if (controlData_[0] != 0x20) {
+    log_.errorf("Unexpected copy response: %02X", controlData_[0]);
     return PortfolioResult::Unknown;
   }
 

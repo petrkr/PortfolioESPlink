@@ -566,6 +566,33 @@ void handleRenameAtari(AsyncWebServerRequest* request) {
   request->send(200, "text/plain", "Renamed");
 }
 
+// API-only endpoint (no web UI hookup) - copy a file on the Portfolio,
+// source to destination, cross-drive capable (unlike rename). See
+// POFOSCAB/copy.inc for the Atari-side implementation this wire request
+// targets.
+void handleCopyAtari(AsyncWebServerRequest* request) {
+  if (!request->hasParam("path") || !request->hasParam("newPath")) {
+    request->send(500, "text/plain", "BAD ARGS");
+    return;
+  }
+
+  String srcPath = request->getParam("path")->value();
+  String dstPath = request->getParam("newPath")->value();
+  uint8_t errCode = 0;
+  PortfolioResult result = portfolio.copyAtari(srcPath.c_str(), dstPath.c_str(), errCode);
+
+  if (result == PortfolioResult::Unknown) {
+    request->send(500, "text/plain", "copy failed: " + String(resultText(result)));
+    return;
+  }
+  if (result == PortfolioResult::InvalidPath) {
+    request->send(409, "text/plain", "copy failed, errcode=" + String(errCode));
+    return;
+  }
+
+  request->send(200, "text/plain", "Copied");
+}
+
 void handleFileListESP32(AsyncWebServerRequest* request) {
   String dir = "/";
   if (request->hasParam("dir")) {
@@ -653,6 +680,7 @@ void setup() {
   server.on("/deleteAtari", HTTP_POST, handleDeleteAtari);
   server.on("/rmdirAtari", HTTP_POST, handleRmdirAtari);
   server.on("/renameAtari", HTTP_POST, handleRenameAtari);
+  server.on("/copyAtari", HTTP_POST, handleCopyAtari);
   server.serveStatic("/files/", FILESYSTEM, DATA_DIR "/").setCacheControl("no-store");
   server.serveStatic("/", FILESYSTEM, "/web/").setDefaultFile("index.htm");
 

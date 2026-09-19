@@ -68,6 +68,7 @@ public:
   PortfolioResult deleteAtari(const char* pofoPath, uint8_t& errCode);
   PortfolioResult rmdirAtari(const char* pofoPath, uint8_t& errCode);
   PortfolioResult renameAtari(const char* oldPofoPath, const char* newPofoPath, uint8_t& errCode);
+  PortfolioResult copyAtari(const char* srcPofoPath, const char* dstPofoPath, uint8_t& errCode);
 
 private:
   enum Verbosity {
@@ -88,7 +89,8 @@ private:
     Mkdir,
     Delete,
     Rmdir,
-    Rename
+    Rename,
+    Copy
   };
 
   static constexpr size_t RAW_BUFSIZE = 90;
@@ -142,6 +144,7 @@ private:
   PortfolioResult runDelete(const char* pofoPath, uint8_t& errCode);
   PortfolioResult runRmdir(const char* pofoPath, uint8_t& errCode);
   PortfolioResult runRename(const char* oldPofoPath, const char* newPofoPath, uint8_t& errCode);
+  PortfolioResult runCopy(const char* srcPofoPath, const char* dstPofoPath, uint8_t& errCode);
 
   log4mcu::Logger& log_;
   PortfolioPins pins_{};

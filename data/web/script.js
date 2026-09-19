@@ -22,11 +22,7 @@ const espUpBtn = document.getElementById("espUpBtn");
 const atariMkdirBtn = document.getElementById("atariMkdirBtn");
 const atariDeleteBtn = document.getElementById("atariDeleteBtn");
 
-const CAP_LIST_EXT = 0x01;
-const CAP_DRIVES = 0x02;
-const CAP_MKDIR = 0x04;
-const CAP_DELETE = 0x08;
-const CAP_RMDIR = 0x10;
+const CAP_CORE = 0x01;
 const FALLBACK_DRIVES = ["A", "B", "C"];
 
 const selectedEsp = new Set();
@@ -38,6 +34,7 @@ let pftdCapabilities = 0;
 let atariDrivesLoaded = false;
 let popoverOpen = false;
 let popoverWasActive = false;
+let wasConnected = false;
 
 function sortDirsFirst(items) {
   return items.slice().sort((a, b) => {
@@ -216,7 +213,7 @@ function renderAtariDriveButtons(drives) {
 async function loadAtariDrives() {
   if (atariDrivesLoaded) return;
 
-  if (!(pftdCapabilities & CAP_DRIVES)) {
+  if (!(pftdCapabilities & CAP_CORE)) {
     renderAtariDriveButtons(FALLBACK_DRIVES);
     return;
   }
@@ -271,7 +268,7 @@ async function refreshStatus() {
 
     if (data.pftd) {
       pftdCapabilities = data.pftd.capabilities;
-      pftdStatus.textContent = `PFTD ${data.pftd.buildId}`;
+      pftdStatus.textContent = `PFTD ${data.pftd.buildId} v${data.pftd.version}`;
       pftdStatus.title = `version ${data.pftd.version}, capabilities 0x${data.pftd.capabilities.toString(16).padStart(2, "0")}`;
     } else {
       pftdCapabilities = 0;
@@ -279,8 +276,16 @@ async function refreshStatus() {
       pftdStatus.title = "";
     }
     loadAtariDrives();
-    atariMkdirBtn.disabled = (pftdCapabilities & CAP_MKDIR) === 0;
-    atariDeleteBtn.disabled = (pftdCapabilities & (CAP_DELETE | CAP_RMDIR)) === 0;
+    atariMkdirBtn.disabled = (pftdCapabilities & CAP_CORE) === 0;
+    atariDeleteBtn.disabled = (pftdCapabilities & CAP_CORE) === 0;
+
+    const isConnected = data.status !== "disconnected";
+    if (isConnected && !wasConnected) {
+      atariDrivesLoaded = false;
+      loadAtariDrives();
+      listForm.requestSubmit();
+    }
+    wasConnected = isConnected;
 
     const isActive = data.status === "busy" || data.phase === "pofo_upload";
     if (isActive) {
@@ -495,7 +500,7 @@ listForm.addEventListener("submit", async (event) => {
 
   const dir = atariPath.value;
   lastAtariDir = dir;
-  const useExtended = (pftdCapabilities & CAP_LIST_EXT) !== 0;
+  const useExtended = (pftdCapabilities & CAP_CORE) !== 0;
   const endpoint = useExtended ? "/listAtariExt" : "/listAtari";
   const response = await fetch(`${endpoint}?dir=${encodeURIComponent(dir)}`);
 
