@@ -60,6 +60,46 @@ const char* phaseText(PortfolioTransferPhase phase) {
   }
 }
 
+String jsonEscape(const String& value) {
+  String escaped;
+  escaped.reserve(value.length() + 8);
+  for (size_t i = 0; i < value.length(); ++i) {
+    const char c = value.charAt(i);
+    switch (c) {
+      case '"': escaped += "\\\""; break;
+      case '\\': escaped += "\\\\"; break;
+      case '\b': escaped += "\\b"; break;
+      case '\f': escaped += "\\f"; break;
+      case '\n': escaped += "\\n"; break;
+      case '\r': escaped += "\\r"; break;
+      case '\t': escaped += "\\t"; break;
+      default:
+        if (static_cast<unsigned char>(c) < 0x20) {
+          char encoded[7];
+          snprintf(encoded, sizeof(encoded), "\\u%04X", static_cast<unsigned char>(c));
+          escaped += encoded;
+        } else {
+          escaped += c;
+        }
+    }
+  }
+  return escaped;
+}
+
+void sendApiResult(AsyncWebServerRequest* request, int status, bool ok, const String& message, int errCode = -1) {
+  String output = "{\"ok\":";
+  output += ok ? "true" : "false";
+  output += ",\"message\":\"";
+  output += jsonEscape(message);
+  output += "\"";
+  if (errCode >= 0) {
+    output += ",\"errcode\":";
+    output += errCode;
+  }
+  output += "}";
+  request->send(status, "application/json", output);
+}
+
 String filesToJson(const String& files) {
   String output = "{ \"files\" : [";
   int start = 0;
@@ -184,23 +224,23 @@ void handleFileUpload(AsyncWebServerRequest* request,
   log_.infof("File %s uploaded", fsPath.c_str());
 
   if (!request->hasParam("toAtari")) {
-    request->send(200, "text/plain", "Uploaded to ESP32");
+    sendApiResult(request, 200, true, "Uploaded to ESP32");
     return;
   }
 
   bool overwrite = request->hasParam("overwrite");
   String destDir = request->hasParam("destDir") ? request->getParam("destDir")->value() : "C:\\";
   if (queueSendToAtari(fsPath, destDir, overwrite)) {
-    request->send(202, "text/plain", "Upload queued");
+    sendApiResult(request, 202, true, "Upload queued");
   } else {
     log_.warn("Upload job rejected");
-    request->send(409, "text/plain", "Portfolio busy");
+    sendApiResult(request, 409, false, "Portfolio busy");
   }
 }
 
 void handleFileListAtari(AsyncWebServerRequest* request) {
   if (!request->hasParam("dir")) {
-    request->send(500, "text/plain", "BAD ARGS");
+    sendApiResult(request, 500, false, "BAD ARGS");
     return;
   }
 
@@ -209,7 +249,7 @@ void handleFileListAtari(AsyncWebServerRequest* request) {
 
   String files;
   if (portfolio.listFiles(path.c_str(), files) != PortfolioResult::Ok) {
-    request->send(500, "text/plain", "Portfolio list failed");
+    sendApiResult(request, 500, false, "Portfolio list failed");
     return;
   }
 
@@ -264,7 +304,7 @@ String atariExtFilesToJson(const String& entries, uint32_t freeBytes, uint32_t t
 
 void handleFileListAtariExt(AsyncWebServerRequest* request) {
   if (!request->hasParam("dir")) {
-    request->send(500, "text/plain", "BAD ARGS");
+    sendApiResult(request, 500, false, "BAD ARGS");
     return;
   }
 
@@ -275,7 +315,7 @@ void handleFileListAtariExt(AsyncWebServerRequest* request) {
   uint32_t freeBytes = 0;
   uint32_t totalBytes = 0;
   if (portfolio.listFilesExtended(path.c_str(), entries, freeBytes, totalBytes) != PortfolioResult::Ok) {
-    request->send(500, "text/plain", "Portfolio extended list failed");
+    sendApiResult(request, 500, false, "Portfolio extended list failed");
     return;
   }
 
@@ -324,7 +364,7 @@ void handleStatus(AsyncWebServerRequest* request) {
 
 void handleDeleteESP32(AsyncWebServerRequest* request) {
   if (!request->hasParam("path")) {
-    request->send(500, "text/plain", "BAD ARGS");
+    sendApiResult(request, 500, false, "BAD ARGS");
     return;
   }
 
@@ -334,21 +374,21 @@ void handleDeleteESP32(AsyncWebServerRequest* request) {
   }
 
   if (relPath.indexOf("..") >= 0) {
-    request->send(403, "text/plain", "Invalid path");
+    sendApiResult(request, 403, false, "Invalid path");
     return;
   }
 
   if (!FILESYSTEM.remove(String(DATA_DIR) + relPath)) {
-    request->send(404, "text/plain", "Delete failed");
+    sendApiResult(request, 404, false, "Delete failed");
     return;
   }
 
-  request->send(200, "text/plain", "Deleted");
+  sendApiResult(request, 200, true, "Deleted");
 }
 
 void handleSendToAtari(AsyncWebServerRequest* request) {
   if (!request->hasParam("path")) {
-    request->send(500, "text/plain", "BAD ARGS");
+    sendApiResult(request, 500, false, "BAD ARGS");
     return;
   }
 
@@ -360,15 +400,15 @@ void handleSendToAtari(AsyncWebServerRequest* request) {
   bool overwrite = request->hasParam("overwrite");
   String destDir = request->hasParam("destDir") ? request->getParam("destDir")->value() : "C:\\";
   if (queueSendToAtari(String(DATA_DIR) + relPath, destDir, overwrite)) {
-    request->send(202, "text/plain", "Upload queued");
+    sendApiResult(request, 202, true, "Upload queued");
   } else {
-    request->send(409, "text/plain", "Portfolio busy");
+    sendApiResult(request, 409, false, "Portfolio busy");
   }
 }
 
 void handleDownloadFromAtari(AsyncWebServerRequest* request) {
   if (!request->hasParam("path")) {
-    request->send(500, "text/plain", "BAD ARGS");
+    sendApiResult(request, 500, false, "BAD ARGS");
     return;
   }
 
@@ -382,9 +422,9 @@ void handleDownloadFromAtari(AsyncWebServerRequest* request) {
 
   bool overwrite = request->hasParam("overwrite");
   if (portfolio.startDownload(FILESYSTEM, pofoPath.c_str(), fsPath.c_str(), overwrite)) {
-    request->send(202, "text/plain", "Download queued");
+    sendApiResult(request, 202, true, "Download queued");
   } else {
-    request->send(409, "text/plain", "Portfolio busy");
+    sendApiResult(request, 409, false, "Portfolio busy");
   }
 }
 
@@ -394,20 +434,20 @@ void handleDownloadFromAtari(AsyncWebServerRequest* request) {
 // (e.g. "0006AA" for bytes 0x00,0x06,0xAA). No interpretation on this side.
 void handleSendRaw(AsyncWebServerRequest* request) {
   if (!request->hasParam("data", true)) {
-    request->send(500, "text/plain", "BAD ARGS");
+    sendApiResult(request, 500, false, "BAD ARGS");
     return;
   }
 
   String hex = request->getParam("data", true)->value();
   if (hex.length() % 2 != 0) {
-    request->send(500, "text/plain", "hex data must have even length");
+    sendApiResult(request, 500, false, "hex data must have even length");
     return;
   }
 
   size_t len = hex.length() / 2;
   uint8_t* buf = static_cast<uint8_t*>(malloc(len));
   if (!buf) {
-    request->send(500, "text/plain", "OOM");
+    sendApiResult(request, 500, false, "OOM");
     return;
   }
   for (size_t i = 0; i < len; i++) {
@@ -419,11 +459,11 @@ void handleSendRaw(AsyncWebServerRequest* request) {
   free(buf);
 
   if (result != PortfolioResult::Ok) {
-    request->send(500, "text/plain", "sendRaw failed: " + String(resultText(result)));
+    sendApiResult(request, 500, false, "sendRaw failed: " + String(resultText(result)));
     return;
   }
 
-  request->send(200, "text/plain", response);
+  request->send(200, "application/json", "{\"ok\":true,\"response\":\"" + jsonEscape(response) + "\"}");
 }
 
 void handleHello(AsyncWebServerRequest* request) {
@@ -434,7 +474,7 @@ void handleHello(AsyncWebServerRequest* request) {
 
   PortfolioResult result = portfolio.helloDaemon(present, buildId, version, capabilities);
   if (result != PortfolioResult::Ok) {
-    request->send(500, "text/plain", "hello failed: " + String(resultText(result)));
+    sendApiResult(request, 500, false, "hello failed: " + String(resultText(result)));
     return;
   }
 
@@ -458,7 +498,7 @@ void handleDrives(AsyncWebServerRequest* request) {
 
   PortfolioResult result = portfolio.listDrives(driveCount);
   if (result != PortfolioResult::Ok) {
-    request->send(500, "text/plain", "drives failed: " + String(resultText(result)));
+    sendApiResult(request, 500, false, "drives failed: " + String(resultText(result)));
     return;
   }
 
@@ -479,7 +519,7 @@ void handleDrives(AsyncWebServerRequest* request) {
 
 void handleMkdirAtari(AsyncWebServerRequest* request) {
   if (!request->hasParam("path")) {
-    request->send(500, "text/plain", "BAD ARGS");
+    sendApiResult(request, 500, false, "BAD ARGS");
     return;
   }
 
@@ -488,20 +528,20 @@ void handleMkdirAtari(AsyncWebServerRequest* request) {
   PortfolioResult result = portfolio.mkdirAtari(pofoPath.c_str(), errCode);
 
   if (result == PortfolioResult::Unknown) {
-    request->send(500, "text/plain", "mkdir failed: " + String(resultText(result)));
+    sendApiResult(request, 500, false, "mkdir failed: " + String(resultText(result)));
     return;
   }
   if (result == PortfolioResult::InvalidPath) {
-    request->send(409, "text/plain", "mkdir failed, errcode=" + String(errCode));
+    sendApiResult(request, 409, false, "mkdir failed", errCode);
     return;
   }
 
-  request->send(200, "text/plain", "Directory created");
+  sendApiResult(request, 200, true, "Directory created");
 }
 
 void handleDeleteAtari(AsyncWebServerRequest* request) {
   if (!request->hasParam("path")) {
-    request->send(500, "text/plain", "BAD ARGS");
+    sendApiResult(request, 500, false, "BAD ARGS");
     return;
   }
 
@@ -510,20 +550,20 @@ void handleDeleteAtari(AsyncWebServerRequest* request) {
   PortfolioResult result = portfolio.deleteAtari(pofoPath.c_str(), errCode);
 
   if (result == PortfolioResult::Unknown) {
-    request->send(500, "text/plain", "delete failed: " + String(resultText(result)));
+    sendApiResult(request, 500, false, "delete failed: " + String(resultText(result)));
     return;
   }
   if (result == PortfolioResult::InvalidPath) {
-    request->send(409, "text/plain", "delete failed, errcode=" + String(errCode));
+    sendApiResult(request, 409, false, "delete failed", errCode);
     return;
   }
 
-  request->send(200, "text/plain", "Deleted");
+  sendApiResult(request, 200, true, "Deleted");
 }
 
 void handleRmdirAtari(AsyncWebServerRequest* request) {
   if (!request->hasParam("path")) {
-    request->send(500, "text/plain", "BAD ARGS");
+    sendApiResult(request, 500, false, "BAD ARGS");
     return;
   }
 
@@ -532,20 +572,20 @@ void handleRmdirAtari(AsyncWebServerRequest* request) {
   PortfolioResult result = portfolio.rmdirAtari(pofoPath.c_str(), errCode);
 
   if (result == PortfolioResult::Unknown) {
-    request->send(500, "text/plain", "rmdir failed: " + String(resultText(result)));
+    sendApiResult(request, 500, false, "rmdir failed: " + String(resultText(result)));
     return;
   }
   if (result == PortfolioResult::InvalidPath) {
-    request->send(409, "text/plain", "rmdir failed, errcode=" + String(errCode));
+    sendApiResult(request, 409, false, "rmdir failed", errCode);
     return;
   }
 
-  request->send(200, "text/plain", "Directory removed");
+  sendApiResult(request, 200, true, "Directory removed");
 }
 
 void handleRenameAtari(AsyncWebServerRequest* request) {
   if (!request->hasParam("path") || !request->hasParam("newPath")) {
-    request->send(500, "text/plain", "BAD ARGS");
+    sendApiResult(request, 500, false, "BAD ARGS");
     return;
   }
 
@@ -555,15 +595,15 @@ void handleRenameAtari(AsyncWebServerRequest* request) {
   PortfolioResult result = portfolio.renameAtari(oldPath.c_str(), newPath.c_str(), errCode);
 
   if (result == PortfolioResult::Unknown) {
-    request->send(500, "text/plain", "rename failed: " + String(resultText(result)));
+    sendApiResult(request, 500, false, "rename failed: " + String(resultText(result)));
     return;
   }
   if (result == PortfolioResult::InvalidPath) {
-    request->send(409, "text/plain", "rename failed, errcode=" + String(errCode));
+    sendApiResult(request, 409, false, "rename failed", errCode);
     return;
   }
 
-  request->send(200, "text/plain", "Renamed");
+  sendApiResult(request, 200, true, "Renamed");
 }
 
 // API-only endpoint (no web UI hookup) - copy a file on the Portfolio,
@@ -572,7 +612,7 @@ void handleRenameAtari(AsyncWebServerRequest* request) {
 // targets.
 void handleCopyAtari(AsyncWebServerRequest* request) {
   if (!request->hasParam("path") || !request->hasParam("newPath")) {
-    request->send(500, "text/plain", "BAD ARGS");
+    sendApiResult(request, 500, false, "BAD ARGS");
     return;
   }
 
@@ -582,15 +622,15 @@ void handleCopyAtari(AsyncWebServerRequest* request) {
   PortfolioResult result = portfolio.copyAtari(srcPath.c_str(), dstPath.c_str(), errCode);
 
   if (result == PortfolioResult::Unknown) {
-    request->send(500, "text/plain", "copy failed: " + String(resultText(result)));
+    sendApiResult(request, 500, false, "copy failed: " + String(resultText(result)));
     return;
   }
   if (result == PortfolioResult::InvalidPath) {
-    request->send(409, "text/plain", "copy failed, errcode=" + String(errCode));
+    sendApiResult(request, 409, false, "copy failed", errCode);
     return;
   }
 
-  request->send(200, "text/plain", "Copied");
+  sendApiResult(request, 200, true, "Copied");
 }
 
 void handleFileListESP32(AsyncWebServerRequest* request) {

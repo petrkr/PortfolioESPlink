@@ -6,6 +6,6 @@
 // PFTD's own BUILD_ID (version.inc in the POFOSCAB repo - see PROTOCOL.md),
 // just a separate counter since this firmware and the Atari-side TSR are
 // built/flashed separately.
-#define FW_BUILD_ID 0x00000007
+#define FW_BUILD_ID 0x00000008
 
 #endif

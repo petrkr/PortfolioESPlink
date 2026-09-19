@@ -55,6 +55,24 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function responseMessage(response) {
+  try {
+    const data = await response.json();
+    return data.message || `Request failed (${response.status})`;
+  } catch {
+    return `Request failed (${response.status})`;
+  }
+}
+
+function xhrResponseMessage(xhr) {
+  try {
+    const data = JSON.parse(xhr.responseText);
+    return data.message || `Request failed (${xhr.status})`;
+  } catch {
+    return `Request failed (${xhr.status})`;
+  }
+}
+
 function setPopoverOpen(open) {
   popoverOpen = open;
   statusPopover.hidden = false;
@@ -90,7 +108,7 @@ atariUpBtn.addEventListener("click", () => {
 async function atariListDirRaw(fullDirPath) {
   const response = await fetch(`/listAtariExt?dir=${encodeURIComponent(`${fullDirPath}\\*.*`)}`);
   if (!response.ok) {
-    throw new Error(await response.text());
+    throw new Error(await responseMessage(response));
   }
   const data = await response.json();
   return data.items.filter((item) => item.name !== "." && item.name !== "..");
@@ -110,7 +128,7 @@ async function deleteAtariEntry(entry) {
   const endpoint = entry.isDir ? "/rmdirAtari" : "/deleteAtari";
   const response = await fetch(`${endpoint}?path=${encodeURIComponent(entry.path)}`, { method: "POST" });
   if (!response.ok) {
-    throw new Error(await response.text());
+    throw new Error(await responseMessage(response));
   }
 }
 
@@ -122,7 +140,7 @@ async function mkdirAtariPrompt() {
   const fullPath = `${dirPrefix}${name}`;
   const response = await fetch(`/mkdirAtari?path=${encodeURIComponent(fullPath)}`, { method: "POST" });
   if (!response.ok) {
-    uploadStatus.textContent = `Mkdir failed: ${await response.text()}`;
+    uploadStatus.textContent = `Mkdir failed: ${await responseMessage(response)}`;
     setPopoverOpen(true);
     return;
   }
@@ -332,7 +350,7 @@ async function refreshESPFiles(dir) {
   }
   const response = await fetch(`/listESP32?dir=${encodeURIComponent(currentEspDir)}`);
   if (!response.ok) {
-    espFiles.textContent = await response.text();
+    espFiles.textContent = await responseMessage(response);
     return;
   }
 
@@ -424,7 +442,7 @@ async function deleteESPFile(name) {
   }
   const response = await fetch(`/deleteESP32?path=${encodeURIComponent(name)}`, { method: "POST" });
   if (!response.ok) {
-    uploadStatus.textContent = await response.text();
+    uploadStatus.textContent = await responseMessage(response);
   }
   selectedEsp.delete(name);
   refreshESPFiles();
@@ -450,7 +468,7 @@ async function copySelectedToAtari() {
       uploadStatus.textContent = `Sending ${name} to Atari...`;
       const response = await fetch(`/sendToAtari?path=${encodeURIComponent(name)}${overwrite}${destParam}`, { method: "POST" });
       if (response.status !== 202) {
-        uploadStatus.textContent = `${name}: ${await response.text()}`;
+        uploadStatus.textContent = `${name}: ${await responseMessage(response)}`;
         break;
       }
       await waitForIdle();
@@ -477,7 +495,7 @@ async function copySelectedFromAtari() {
       uploadStatus.textContent = `Downloading ${name} from Atari...`;
       const response = await fetch(`/downloadFromAtari?path=${encodeURIComponent(fullPath)}${overwrite}`, { method: "POST" });
       if (response.status !== 202) {
-        uploadStatus.textContent = `${name}: ${await response.text()}`;
+        uploadStatus.textContent = `${name}: ${await responseMessage(response)}`;
         break;
       }
       await waitForIdle();
@@ -505,7 +523,7 @@ listForm.addEventListener("submit", async (event) => {
   const response = await fetch(`${endpoint}?dir=${encodeURIComponent(dir)}`);
 
   if (!response.ok) {
-    atariFiles.textContent = await response.text();
+    atariFiles.textContent = await responseMessage(response);
     refreshStatus();
     atariUpBtn.disabled = atariParentPath(dir) === null;
     return;
@@ -620,7 +638,7 @@ async function uploadFile(file) {
     }
   };
   xhr.onload = () => {
-    uploadStatus.textContent = xhr.status === 202 ? "Queued for Portfolio" : xhr.responseText;
+    uploadStatus.textContent = xhr.status === 202 ? "Queued for Portfolio" : xhrResponseMessage(xhr);
     refreshESPFiles();
     refreshStatus();
   };
