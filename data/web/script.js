@@ -22,7 +22,6 @@ const espUpBtn = document.getElementById("espUpBtn");
 const atariMkdirBtn = document.getElementById("atariMkdirBtn");
 const atariDeleteBtn = document.getElementById("atariDeleteBtn");
 
-const CAP_CORE = 0x01;
 const FALLBACK_DRIVES = ["A", "B", "C"];
 
 const selectedEsp = new Set();
@@ -30,7 +29,7 @@ const selectedAtari = new Set();
 const selectedAtariIsDir = new Map();
 let lastAtariDir = "";
 let currentEspDir = "/";
-let pftdCapabilities = 0;
+let pftdSupportsAllFeatures = false;
 let atariDrivesLoaded = false;
 let popoverOpen = false;
 let popoverWasActive = false;
@@ -231,7 +230,7 @@ function renderAtariDriveButtons(drives) {
 async function loadAtariDrives() {
   if (atariDrivesLoaded) return;
 
-  if (!(pftdCapabilities & CAP_CORE)) {
+  if (!pftdSupportsAllFeatures) {
     renderAtariDriveButtons(FALLBACK_DRIVES);
     return;
   }
@@ -285,17 +284,18 @@ async function refreshStatus() {
     transferError.textContent = data.error ? `Error: ${data.error}` : "";
 
     if (data.pftd) {
-      pftdCapabilities = data.pftd.capabilities;
-      pftdStatus.textContent = `PFTD ${data.pftd.buildId} v${data.pftd.version}`;
-      pftdStatus.title = `version ${data.pftd.version}, capabilities 0x${data.pftd.capabilities.toString(16).padStart(2, "0")}`;
+      const { major, minor, patch } = data.pftd.version;
+      pftdSupportsAllFeatures = major >= 0;
+      pftdStatus.textContent = `PFTD ${data.pftd.buildId} v${major}.${minor}.${patch}`;
+      pftdStatus.title = `version ${major}.${minor}.${patch}`;
     } else {
-      pftdCapabilities = 0;
+      pftdSupportsAllFeatures = false;
       pftdStatus.textContent = "";
       pftdStatus.title = "";
     }
     loadAtariDrives();
-    atariMkdirBtn.disabled = (pftdCapabilities & CAP_CORE) === 0;
-    atariDeleteBtn.disabled = (pftdCapabilities & CAP_CORE) === 0;
+    atariMkdirBtn.disabled = !pftdSupportsAllFeatures;
+    atariDeleteBtn.disabled = !pftdSupportsAllFeatures;
 
     const isConnected = data.status !== "disconnected";
     if (isConnected && !wasConnected) {
@@ -315,7 +315,7 @@ async function refreshStatus() {
   } catch {
     statusEl.textContent = "Disconnected";
     statusEl.dataset.state = "disconnected";
-    pftdCapabilities = 0;
+    pftdSupportsAllFeatures = false;
     pftdStatus.textContent = "";
     pftdStatus.title = "";
     loadAtariDrives();
@@ -518,7 +518,7 @@ listForm.addEventListener("submit", async (event) => {
 
   const dir = atariPath.value;
   lastAtariDir = dir;
-  const useExtended = (pftdCapabilities & CAP_CORE) !== 0;
+  const useExtended = pftdSupportsAllFeatures;
   const endpoint = useExtended ? "/listAtariExt" : "/listAtari";
   const response = await fetch(`${endpoint}?dir=${encodeURIComponent(dir)}`);
 
