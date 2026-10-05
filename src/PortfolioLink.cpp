@@ -114,12 +114,8 @@ uint32_t PortfolioLink::pftdBuildId() const {
   return pftdBuildId_;
 }
 
-uint8_t PortfolioLink::pftdVersion() const {
+PftdVersion PortfolioLink::pftdVersion() const {
   return pftdVersion_;
-}
-
-uint8_t PortfolioLink::pftdCapabilities() const {
-  return pftdCapabilities_;
 }
 
 bool PortfolioLink::startUpload(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite) {
@@ -263,7 +259,7 @@ PortfolioResult PortfolioLink::sendRaw(const uint8_t* data, size_t len, String& 
   return result;
 }
 
-PortfolioResult PortfolioLink::helloDaemon(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities) {
+PortfolioResult PortfolioLink::helloDaemon(bool& present, uint32_t& buildId, PftdVersion& version) {
   if (!jobQueue_ || status_ == PortfolioStatus::Busy) {
     return PortfolioResult::Unknown;
   }
@@ -271,8 +267,7 @@ PortfolioResult PortfolioLink::helloDaemon(bool& present, uint32_t& buildId, uin
   PortfolioResult result = PortfolioResult::Unknown;
   present = false;
   buildId = 0;
-  version = 0;
-  capabilities = 0;
+  version = {};
 
   Job job{};
   job.type = JobType::Hello;
@@ -280,7 +275,6 @@ PortfolioResult PortfolioLink::helloDaemon(bool& present, uint32_t& buildId, uin
   job.helloPresent = &present;
   job.helloBuildId = &buildId;
   job.helloVersion = &version;
-  job.helloCapabilities = &capabilities;
   job.done = xSemaphoreCreateBinary();
 
   if (!job.done) {
@@ -571,7 +565,7 @@ void PortfolioLink::taskLoop() {
       } else if (job.type == JobType::Raw && job.rawResponse) {
         result = runRaw(job.rawData, job.rawLen, *job.rawResponse);
       } else if (job.type == JobType::Hello && job.helloPresent) {
-        result = runHello(*job.helloPresent, *job.helloBuildId, *job.helloVersion, *job.helloCapabilities);
+        result = runHello(*job.helloPresent, *job.helloBuildId, *job.helloVersion);
       } else if (job.type == JobType::Drives && job.driveCount) {
         result = runDrives(*job.driveCount);
       } else if (job.type == JobType::Mkdir && job.errCode) {
@@ -628,13 +622,11 @@ void PortfolioLink::taskLoop() {
         if (wasDisconnected) {
           bool present = false;
           uint32_t buildId = 0;
-          uint8_t version = 0;
-          uint8_t capabilities = 0;
-          runHello(present, buildId, version, capabilities);
+          PftdVersion version{};
+          runHello(present, buildId, version);
           hasPFTD_ = present;
           pftdBuildId_ = buildId;
           pftdVersion_ = version;
-          pftdCapabilities_ = capabilities;
           status_ = PortfolioStatus::Connected;
         }
       } else if (misses < DETECT_MISSES_TO_DISCONNECT) {
@@ -1051,7 +1043,7 @@ PortfolioResult PortfolioLink::runRaw(const uint8_t* data, size_t len, String& r
   return PortfolioResult::Ok;
 }
 
-PortfolioResult PortfolioLink::runHello(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities) {
+PortfolioResult PortfolioLink::runHello(bool& present, uint32_t& buildId, PftdVersion& version) {
   log_.info("Probing for PFTD (HELLO)");
 
   unsigned char request[RAW_BUFSIZE] = {0};
@@ -1074,8 +1066,9 @@ PortfolioResult PortfolioLink::runHello(bool& present, uint32_t& buildId, uint8_
   present = true;
   buildId = static_cast<uint32_t>(payload_[4]) | (static_cast<uint32_t>(payload_[5]) << 8) |
             (static_cast<uint32_t>(payload_[6]) << 16) | (static_cast<uint32_t>(payload_[7]) << 24);
-  version = payload_[8];
-  capabilities = payload_[9];
+  version.major = payload_[8];
+  version.minor = payload_[9];
+  version.patch = payload_[10];
   return PortfolioResult::Ok;
 }
 

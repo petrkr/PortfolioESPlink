@@ -257,7 +257,7 @@ void handleFileListAtari(AsyncWebServerRequest* request) {
 }
 
 // Extended listing (PFTD 0x86, requires the PFTD driver to be resident on
-// the Portfolio - see /hello capabilities). Each entry line from
+// the Portfolio - see /hello version). Each entry line from
 // PortfolioLink::listFilesExtended is "D|F,size,YYYY-MM-DD HH:MM:SS,name" -
 // split into JSON objects, same shape as espFilesToJson's "items" array.
 String atariExtFilesToJson(const String& entries, uint32_t freeBytes, uint32_t totalBytes) {
@@ -350,10 +350,14 @@ void handleStatus(AsyncWebServerRequest* request) {
     snprintf(buildIdHex, sizeof(buildIdHex), "%08X", portfolio.pftdBuildId());
     output += "{ \"buildId\" : \"";
     output += buildIdHex;
-    output += "\", \"version\" : ";
-    output += portfolio.pftdVersion();
-    output += ", \"capabilities\" : ";
-    output += portfolio.pftdCapabilities();
+    PftdVersion version = portfolio.pftdVersion();
+    output += "\", \"version\" : { \"major\" : ";
+    output += version.major;
+    output += ", \"minor\" : ";
+    output += version.minor;
+    output += ", \"patch\" : ";
+    output += version.patch;
+    output += " }";
     output += " }";
   } else {
     output += "null";
@@ -469,10 +473,9 @@ void handleSendRaw(AsyncWebServerRequest* request) {
 void handleHello(AsyncWebServerRequest* request) {
   bool present = false;
   uint32_t buildId = 0;
-  uint8_t version = 0;
-  uint8_t capabilities = 0;
+  PftdVersion version{};
 
-  PortfolioResult result = portfolio.helloDaemon(present, buildId, version, capabilities);
+  PortfolioResult result = portfolio.helloDaemon(present, buildId, version);
   if (result != PortfolioResult::Ok) {
     sendApiResult(request, 500, false, "hello failed: " + String(resultText(result)));
     return;
@@ -485,10 +488,13 @@ void handleHello(AsyncWebServerRequest* request) {
   output += present ? "true" : "false";
   output += ", \"buildId\" : \"";
   output += buildIdHex;
-  output += "\", \"version\" : ";
-  output += version;
-  output += ", \"capabilities\" : ";
-  output += capabilities;
+  output += "\", \"version\" : { \"major\" : ";
+  output += version.major;
+  output += ", \"minor\" : ";
+  output += version.minor;
+  output += ", \"patch\" : ";
+  output += version.patch;
+  output += " }";
   output += " }";
   request->send(200, "application/json", output);
 }

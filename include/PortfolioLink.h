@@ -16,6 +16,12 @@ struct PortfolioPins {
   uint8_t inData;
 };
 
+struct PftdVersion {
+  uint8_t major = 0;
+  uint8_t minor = 0;
+  uint8_t patch = 0;
+};
+
 enum class PortfolioStatus {
   Disconnected,
   Connected,
@@ -54,15 +60,14 @@ public:
   bool isBusy() const;
   bool hasPFTD() const;
   uint32_t pftdBuildId() const;
-  uint8_t pftdVersion() const;
-  uint8_t pftdCapabilities() const;
+  PftdVersion pftdVersion() const;
 
   bool startUpload(fs::FS& fs, const char* localPath, const char* pofoPath, bool overwrite);
   bool startDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite);
   PortfolioResult listFiles(const char* pattern, String& output);
   PortfolioResult listFilesExtended(const char* pattern, String& output, uint32_t& freeBytes, uint32_t& totalBytes);
   PortfolioResult sendRaw(const uint8_t* data, size_t len, String& response);
-  PortfolioResult helloDaemon(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities);
+  PortfolioResult helloDaemon(bool& present, uint32_t& buildId, PftdVersion& version);
   PortfolioResult listDrives(uint8_t& driveCount);
   PortfolioResult mkdirAtari(const char* pofoPath, uint8_t& errCode);
   PortfolioResult deleteAtari(const char* pofoPath, uint8_t& errCode);
@@ -114,8 +119,7 @@ private:
     String* rawResponse;
     bool* helloPresent;
     uint32_t* helloBuildId;
-    uint8_t* helloVersion;
-    uint8_t* helloCapabilities;
+    PftdVersion* helloVersion;
     uint32_t* listFreeBytes;
     uint32_t* listTotalBytes;
     uint8_t* driveCount;
@@ -145,7 +149,7 @@ private:
   PortfolioResult runUpload(fs::FS& fs, const char* filename, const char* dest, bool overwrite);
   PortfolioResult runDownload(fs::FS& fs, const char* pofoPath, const char* localPath, bool overwrite);
   PortfolioResult runRaw(const uint8_t* data, size_t len, String& response);
-  PortfolioResult runHello(bool& present, uint32_t& buildId, uint8_t& version, uint8_t& capabilities);
+  PortfolioResult runHello(bool& present, uint32_t& buildId, PftdVersion& version);
   PortfolioResult runDrives(uint8_t& driveCount);
   PortfolioResult runMkdir(const char* pofoPath, uint8_t& errCode);
   PortfolioResult runDelete(const char* pofoPath, uint8_t& errCode);
@@ -166,8 +170,7 @@ private:
   volatile size_t transferTotal_ = 0;
   volatile bool hasPFTD_ = false;
   volatile uint32_t pftdBuildId_ = 0;
-  volatile uint8_t pftdVersion_ = 0;
-  volatile uint8_t pftdCapabilities_ = 0;
+  PftdVersion pftdVersion_{};
   unsigned char* payload_ = nullptr;
   unsigned char* controlData_ = nullptr;
   // offset 3-6 (time, then date - DOS packed format) is overwritten with
