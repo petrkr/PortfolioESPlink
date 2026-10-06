@@ -25,6 +25,12 @@ static log4mcu::Logger& logger = log4mcu::Logger::get("PortfolioESPlink");
 static log4mcu::SerialLogAppender serialAppender(Serial);
 
 void setup() {
+  // USB-CDC write() blocks (host-backpressure path) up to tx_timeout_ms *
+  // max_consec_timeouts (~2s per call by default) whenever the port is
+  // enumerated but nothing is reading it. Disable that wait so logging never
+  // stalls the main loop (and therefore the web server) while nobody has the
+  // port open.
+  Serial.setTxTimeoutMs(0);
   Serial.begin(115200);
   delay(250);
 
