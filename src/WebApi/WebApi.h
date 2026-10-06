@@ -10,6 +10,8 @@
 //   GET  /listAtariExt?dir=PATH               -> {items:[{name,type,size,modified}],freeBytes,totalBytes},
 //                                                 PFTD-only (404 if not present)
 //   GET  /drives                              -> {drives:["A","B",...]}, PFTD-only (404 if not present)
+//   POST /mkdirAtari?path=PATH                -> {ok,message[,errcode]}, PFTD-only (404 if not present,
+//                                                 409 if the Portfolio rejected the request)
 //   POST /upload?overwrite&toAtari&destDir=   -> 202, stores under DATA_DIR, optionally also sends to Portfolio
 //   POST /sendToAtari?path&overwrite&destDir= -> 202 once started, path is DATA_DIR-relative
 //   POST /downloadFromAtari?path&overwrite    -> 202 once started, path is the full Portfolio path
@@ -18,8 +20,9 @@
 // Also serves the ElegantOTA firmware update portal at GET/POST /update.
 //
 // Each route group is registered from its own .cpp (Status.cpp,
-// Esp32Files.cpp, AtariList.cpp, Transfer.cpp, Ota.cpp) via a register*()
-// function declared in WebApiInternal.h, called from webApiBegin() here.
+// Esp32Files.cpp, AtariList.cpp, Transfer.cpp, Ota.cpp, Mkdir.cpp) via a
+// register*() function declared in WebApiInternal.h, called from
+// webApiBegin() here.
 void webApiBegin();
 
 // Must be called from loop().

@@ -61,6 +61,15 @@ class PortfolioLink {
   // "C:\\*.*". Defined in ListExt.cpp.
   PofoResult listExt(const char* path, PortfolioLinkListExt* response);
 
+  // Creates a directory on the Portfolio. PFTD-only (see
+  // ~/git/POFOSCAB/src/pftd/mkdir.inc); requires hello() to have reported
+  // PFTD present first. Returns PofoResult::REMOTE_ERROR (with *errCode set
+  // to the PFTD error code: 1=not found, 2=already exists, 3=disk full,
+  // 4=access denied, 0xFF=critical error) when the Portfolio rejected the
+  // request; other PofoResult values indicate a transport-level failure.
+  // Defined in Mkdir.cpp.
+  PofoResult mkdir(const char* path, uint8_t* errCode);
+
  private:
   PofoSmartCable& cable_;
   PofoFileTransfer fileTransfer_;

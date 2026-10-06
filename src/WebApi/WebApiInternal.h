@@ -24,3 +24,4 @@ void registerEsp32FileRoutes();
 void registerAtariListRoutes();
 void registerTransferRoutes();
 void registerOtaRoutes();
+void registerMkdirRoutes();

@@ -33,6 +33,7 @@ void webApiBegin() {
   registerAtariListRoutes();
   registerTransferRoutes();
   registerOtaRoutes();
+  registerMkdirRoutes();
 
   server.serveStatic("/files/", LittleFS, DATA_DIR);
   server.serveStatic("/", LittleFS, "/web/");
