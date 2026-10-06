@@ -5,6 +5,8 @@
 #include <PofoFileTransfer.h>
 #include <PofoSmartCableResult.h>
 
+#include "ListExt.h"
+
 class PofoSmartCable;
 
 // Response to the PFTD HELLO command (payload[0]=0x80). See
@@ -50,6 +52,14 @@ class PortfolioLink {
   // requires hello() to have reported PFTD present first. Defined in
   // Drives.cpp.
   PofoResult drives(uint8_t* driveCount);
+
+  // Directory listing with attribute/size/date/time per entry, plus
+  // free/total space on the pattern's drive - unlike list() (stock ROM,
+  // bare names only). PFTD-only (see
+  // ~/git/POFOSCAB/src/pftd/list.inc); requires hello() to have reported
+  // PFTD present first. path is required, for example "*.*" or
+  // "C:\\*.*". Defined in ListExt.cpp.
+  PofoResult listExt(const char* path, PortfolioLinkListExt* response);
 
  private:
   PofoSmartCable& cable_;

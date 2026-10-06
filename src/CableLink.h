@@ -36,6 +36,9 @@ class CableLink {
   // PFTD-only. See PortfolioLink::drives().
   PofoResult drives(uint8_t* driveCount);
 
+  // PFTD-only. See PortfolioLink::listExt().
+  PofoResult listExt(const char* path, PortfolioLinkListExt* response);
+
   // Whether PFTD answered HELLO after the link's last offline->online
   // transition, and its reported identity if so. HELLO itself runs once per
   // transition (from loop(), not synchronously here - a blocking cable call

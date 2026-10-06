@@ -7,6 +7,8 @@
 //                                                 after the link's last offline->online transition.
 //   GET  /listESP32?dir=PATH                  -> {items:[{name,type}]}, rooted at DATA_DIR
 //   GET  /listAtari?dir=PATH                  -> {files:[...]}
+//   GET  /listAtariExt?dir=PATH               -> {items:[{name,type,size,modified}],freeBytes,totalBytes},
+//                                                 PFTD-only (404 if not present)
 //   GET  /drives                              -> {drives:["A","B",...]}, PFTD-only (404 if not present)
 //   POST /upload?overwrite&toAtari&destDir=   -> 202, stores under DATA_DIR, optionally also sends to Portfolio
 //   POST /sendToAtari?path&overwrite&destDir= -> 202 once started, path is DATA_DIR-relative

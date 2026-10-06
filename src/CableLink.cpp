@@ -97,6 +97,10 @@ PofoResult CableLink::drives(uint8_t* driveCount) {
   return portfolioLink_.drives(driveCount);
 }
 
+PofoResult CableLink::listExt(const char* path, PortfolioLinkListExt* response) {
+  return portfolioLink_.listExt(path, response);
+}
+
 void CableLink::processHello() {
   if (!helloPending_ || busy_ || !cable_.online()) {
     return;
