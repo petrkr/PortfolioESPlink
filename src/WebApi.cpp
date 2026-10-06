@@ -4,6 +4,7 @@
 #include <WebServer.h>
 #include <LittleFS.h>
 #include <log4mcu.h>
+#include <ElegantOTA.h>
 
 #include "CableLink.h"
 #include "FsUtil.h"
@@ -183,6 +184,8 @@ static void handleDownloadFromAtari() {
 }
 
 void webApiBegin() {
+  ElegantOTA.begin(&server);
+
   server.on("/status", HTTP_GET, handleStatus);
   server.on("/listESP32", HTTP_GET, handleListEsp32);
   server.on("/listAtari", HTTP_GET, handleListAtari);
@@ -198,4 +201,5 @@ void webApiBegin() {
 
 void webApiLoop() {
   server.handleClient();
+  ElegantOTA.loop();
 }
