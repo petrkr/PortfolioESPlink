@@ -131,6 +131,16 @@ class PortfolioLink {
   // DateTime.cpp.
   PofoResult setDateTime(uint16_t dosDate, uint16_t dosTime, uint8_t* errCode);
 
+  // Sends an arbitrary pre-built block and returns whatever comes back,
+  // unparsed - a protocol-level escape hatch for probing/debugging
+  // commands that don't have (or don't yet have) their own typed method
+  // here. *responsePayload is caller-owned on return (release with
+  // PofoSmartCable::releaseBlock()). Works regardless of whether PFTD is
+  // present - it's the caller's job to build a valid request. Defined in
+  // SendRaw.cpp.
+  PofoResult sendRaw(const uint8_t* data, size_t length, uint8_t** responsePayload,
+                     size_t* responseLength);
+
  private:
   PofoSmartCable& cable_;
   PofoFileTransfer fileTransfer_;

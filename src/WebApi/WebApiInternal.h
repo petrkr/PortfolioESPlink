@@ -30,3 +30,4 @@ void registerDeleteRoutes();
 void registerRenameRoutes();
 void registerCopyRoutes();
 void registerDateTimeRoutes();
+void registerSendRawRoutes();

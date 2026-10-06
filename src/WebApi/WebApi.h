@@ -27,6 +27,9 @@
 //   POST /datetimeAtari?datetime=ISO8601      -> {ok,datetime[,message,errcode]}, PFTD-only (404 if not
 //                                                 present, 409 if the Portfolio rejected the request).
 //                                                 No timezone offset (DOS packed date/time has none).
+//   POST /sendRaw?data=HEX                    -> {ok,response:HEX}, raw protocol-level debug/probing
+//                                                 escape hatch; only requires the link to be online, not
+//                                                 PFTD presence - the caller builds the request bytes
 //   POST /upload?overwrite&toAtari&destDir=   -> 202, stores under DATA_DIR, optionally also sends to Portfolio
 //   POST /sendToAtari?path&overwrite&destDir= -> 202 once started, path is DATA_DIR-relative
 //   POST /downloadFromAtari?path&overwrite    -> 202 once started, path is the full Portfolio path
@@ -36,8 +39,8 @@
 //
 // Each route group is registered from its own .cpp (Status.cpp,
 // Esp32Files.cpp, AtariList.cpp, Transfer.cpp, Ota.cpp, Mkdir.cpp,
-// Rmdir.cpp, Delete.cpp, Rename.cpp, Copy.cpp, DateTime.cpp) via a
-// register*() function declared in WebApiInternal.h, called from
+// Rmdir.cpp, Delete.cpp, Rename.cpp, Copy.cpp, DateTime.cpp, SendRaw.cpp)
+// via a register*() function declared in WebApiInternal.h, called from
 // webApiBegin() here.
 void webApiBegin();
 
