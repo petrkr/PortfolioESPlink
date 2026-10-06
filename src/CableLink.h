@@ -4,7 +4,7 @@
 #include <PofoSmartCable.h>
 #include <PofoFileTransfer.h>
 
-#include "PortfolioLink.h"
+#include "PortfolioLink/PortfolioLink.h"
 
 // Owns the PofoSmartCable link and the single pending transfer (upload to or
 // download from the Portfolio) requested by the web API. loop() must be

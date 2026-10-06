@@ -25,8 +25,9 @@ struct PortfolioLinkHello {
 // Transfer Server functionality.
 //
 // list()/receiveFile()/transmitFile() delegate straight to an internal
-// PofoFileTransfer; hello() and future PFTD commands use cable_ directly,
-// the same way PofoFileTransfer itself does.
+// PofoFileTransfer (defined in PortfolioLink.cpp); each PFTD command has its
+// own .cpp here (Hello.cpp, Drives.cpp, ...) defining that method, using
+// cable_ directly the same way PofoFileTransfer itself does.
 class PortfolioLink {
  public:
   explicit PortfolioLink(PofoSmartCable& cable);
@@ -41,12 +42,13 @@ class PortfolioLink {
   // build id and version. Returns PofoResult::OK with response populated
   // when PFTD answered; PofoResult::TIMEOUT (no answer - either no PFTD
   // installed, or a stock ROM waiting on something else entirely) is the
-  // expected "not present" outcome, not a real error.
+  // expected "not present" outcome, not a real error. Defined in Hello.cpp.
   PofoResult hello(PortfolioLinkHello* response);
 
   // Queries how many logical drives DOS knows about (1 = A: only, 2 = A:
   // and B:, ...). PFTD-only (see ~/git/POFOSCAB/src/pftd/drives.inc);
-  // requires hello() to have reported PFTD present first.
+  // requires hello() to have reported PFTD present first. Defined in
+  // Drives.cpp.
   PofoResult drives(uint8_t* driveCount);
 
  private:
