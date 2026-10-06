@@ -8,6 +8,7 @@
 
 #include "CableLink.h"
 #include "FsUtil.h"
+#include "OtaControl.h"
 
 #define DATA_DIR "/data/"
 
@@ -25,7 +26,8 @@ static void handleStatus() {
   out += "\"phase\":\""; out += (busy ? "pofo_upload" : "idle"); out += "\",";
   out += "\"done\":"; out += String(cableLink.transferredBytes()); out += ",";
   out += "\"total\":"; out += String(cableLink.totalBytes()); out += ",";
-  out += "\"error\":\""; out += cableLink.lastError(); out += "\"";
+  out += "\"error\":\""; out += cableLink.lastError(); out += "\",";
+  out += "\"otaEnabled\":"; out += (otaControlEnabled() ? "true" : "false");
   out += "}";
 
   server.send(200, "application/json", out);
@@ -183,6 +185,18 @@ static void handleDownloadFromAtari() {
   server.send(202, "text/plain", "");
 }
 
+// POST /ota/enable, POST /ota/disable -> toggles the ArduinoOTA (espota)
+// listener, which is otherwise never started.
+static void handleOtaEnable() {
+  otaControlEnable();
+  server.send(200, "text/plain", "");
+}
+
+static void handleOtaDisable() {
+  otaControlDisable();
+  server.send(200, "text/plain", "");
+}
+
 void webApiBegin() {
   ElegantOTA.begin(&server);
 
@@ -192,6 +206,8 @@ void webApiBegin() {
   server.on("/upload", HTTP_POST, handleUpload, handleUploadData);
   server.on("/sendToAtari", HTTP_POST, handleSendToAtari);
   server.on("/downloadFromAtari", HTTP_POST, handleDownloadFromAtari);
+  server.on("/ota/enable", HTTP_POST, handleOtaEnable);
+  server.on("/ota/disable", HTTP_POST, handleOtaDisable);
 
   server.serveStatic("/files/", LittleFS, DATA_DIR);
   server.serveStatic("/", LittleFS, "/web/");

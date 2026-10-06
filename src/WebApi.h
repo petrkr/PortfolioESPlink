@@ -7,6 +7,7 @@
 //   POST /upload?overwrite&toAtari&destDir=   -> 202, stores under DATA_DIR, optionally also sends to Portfolio
 //   POST /sendToAtari?path&overwrite&destDir= -> 202 once started, path is DATA_DIR-relative
 //   POST /downloadFromAtari?path&overwrite    -> 202 once started, path is the full Portfolio path
+//   POST /ota/enable, /ota/disable            -> starts/stops the ArduinoOTA (espota) listener
 //
 // Also serves the ElegantOTA firmware update portal at GET/POST /update.
 void webApiBegin();

@@ -20,6 +20,7 @@
 
 #include "CableLink.h"
 #include "WebApi.h"
+#include "OtaControl.h"
 
 static log4mcu::Logger& logger = log4mcu::Logger::get("PortfolioESPlink");
 static log4mcu::SerialLogAppender serialAppender(Serial);
@@ -77,4 +78,5 @@ void setup() {
 void loop() {
   webApiLoop();
   cableLink.loop();
+  otaControlLoop();
 }
