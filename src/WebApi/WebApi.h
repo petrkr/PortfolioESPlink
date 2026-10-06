@@ -16,6 +16,10 @@
 //   POST /ota/enable, /ota/disable            -> starts/stops the ArduinoOTA (espota) listener
 //
 // Also serves the ElegantOTA firmware update portal at GET/POST /update.
+//
+// Each route group is registered from its own .cpp (Status.cpp,
+// Esp32Files.cpp, AtariList.cpp, Transfer.cpp, Ota.cpp) via a register*()
+// function declared in WebApiInternal.h, called from webApiBegin() here.
 void webApiBegin();
 
 // Must be called from loop().
