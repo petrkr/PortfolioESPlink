@@ -42,6 +42,10 @@ void setup() {
     logger.error("Filesystem mount failed");
   }
 
+  if (!LittleFS.exists("/data")) {
+    LittleFS.mkdir("/data");
+  }
+
   logger.infof("Connecting to %s", ssid);
   if (String(WiFi.SSID()) != String(ssid)) {
     WiFi.mode(WIFI_STA);
