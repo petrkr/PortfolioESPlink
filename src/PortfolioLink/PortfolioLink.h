@@ -70,6 +70,48 @@ class PortfolioLink {
   // Defined in Mkdir.cpp.
   PofoResult mkdir(const char* path, uint8_t* errCode);
 
+  // Removes an empty directory on the Portfolio. PFTD-only (see
+  // ~/git/POFOSCAB/src/pftd/rmdir.inc); requires hello() to have reported
+  // PFTD present first. Returns PofoResult::REMOTE_ERROR (with *errCode set
+  // to the PFTD error code: 1=not found, 4=access denied (also covers "not
+  // empty"), 0xFF=critical error) when the Portfolio rejected the request;
+  // other PofoResult values indicate a transport-level failure. Defined in
+  // Rmdir.cpp.
+  PofoResult rmdir(const char* path, uint8_t* errCode);
+
+  // Deletes a file (not a directory - see rmdir()) on the Portfolio.
+  // PFTD-only (see ~/git/POFOSCAB/src/pftd/delete.inc); requires hello() to
+  // have reported PFTD present first. Named deleteFile, not delete: delete
+  // is a reserved C++ keyword. Returns PofoResult::REMOTE_ERROR (with
+  // *errCode set to the PFTD error code: 1=not found, 3=disk full,
+  // 4=access denied, 0xFF=critical error) when the Portfolio rejected the
+  // request; other PofoResult values indicate a transport-level failure.
+  // Defined in Delete.cpp.
+  PofoResult deleteFile(const char* path, uint8_t* errCode);
+
+  // Renames/moves a file or directory on the Portfolio (same-drive only -
+  // DOS rename cannot cross drives). PFTD-only (see
+  // ~/git/POFOSCAB/src/pftd/rename.inc); requires hello() to have reported
+  // PFTD present first. Returns PofoResult::REMOTE_ERROR (with *errCode set
+  // to the PFTD error code: 1=not found, 4=access denied (also covers
+  // "destination already exists" and cross-drive rename), 0xFF=critical
+  // error) when the Portfolio rejected the request; other PofoResult values
+  // indicate a transport-level failure. Defined in Rename.cpp.
+  PofoResult rename(const char* oldPath, const char* newPath, uint8_t* errCode);
+
+  // Copies a file on the Portfolio, source to destination (files only, no
+  // directory recursion); unlike rename(), works cross-drive since it's a
+  // real data copy, not a directory-entry rewrite. The destination is
+  // always overwritten if it exists. PFTD-only (see
+  // ~/git/POFOSCAB/src/pftd/copy.inc); requires hello() to have reported
+  // PFTD present first. Returns PofoResult::REMOTE_ERROR (with *errCode set
+  // to the PFTD error code: 1=not found, 3=disk full, 4=access denied,
+  // 0xFF=critical error) when the Portfolio rejected the request; other
+  // PofoResult values indicate a transport-level failure. This call blocks
+  // for the whole copy duration (synchronous, no progress reporting over
+  // the wire - see copy.inc). Defined in Copy.cpp.
+  PofoResult copy(const char* srcPath, const char* dstPath, uint8_t* errCode);
+
  private:
   PofoSmartCable& cable_;
   PofoFileTransfer fileTransfer_;

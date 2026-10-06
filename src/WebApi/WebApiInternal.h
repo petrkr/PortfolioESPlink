@@ -25,3 +25,7 @@ void registerAtariListRoutes();
 void registerTransferRoutes();
 void registerOtaRoutes();
 void registerMkdirRoutes();
+void registerRmdirRoutes();
+void registerDeleteRoutes();
+void registerRenameRoutes();
+void registerCopyRoutes();
