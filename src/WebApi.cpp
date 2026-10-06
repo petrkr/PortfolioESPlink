@@ -16,6 +16,12 @@ static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 static WebServer server(80);
 static File fsUploadFile;
 
+static String hex32(uint32_t value) {
+  char buf[9];
+  snprintf(buf, sizeof(buf), "%08lx", static_cast<unsigned long>(value));
+  return String(buf);
+}
+
 static void handleStatus() {
   const bool connected = cableLink.online();
   const bool busy = cableLink.busy();
@@ -27,7 +33,21 @@ static void handleStatus() {
   out += "\"done\":"; out += String(cableLink.transferredBytes()); out += ",";
   out += "\"total\":"; out += String(cableLink.totalBytes()); out += ",";
   out += "\"error\":\""; out += cableLink.lastError(); out += "\",";
-  out += "\"otaEnabled\":"; out += (otaControlEnabled() ? "true" : "false");
+  out += "\"otaEnabled\":"; out += (otaControlEnabled() ? "true" : "false"); out += ",";
+
+  out += "\"pftd\":";
+  if (cableLink.helloChecked() && cableLink.pftdPresent()) {
+    const PortfolioLinkHello& info = cableLink.pftdInfo();
+    out += "{\"buildId\":\""; out += hex32(info.buildId); out += "\",";
+    out += "\"version\":{";
+    out += "\"major\":"; out += String(info.versionMajor); out += ",";
+    out += "\"minor\":"; out += String(info.versionMinor); out += ",";
+    out += "\"patch\":"; out += String(info.versionPatch);
+    out += "}}";
+  } else {
+    out += "null";
+  }
+
   out += "}";
 
   server.send(200, "application/json", out);
@@ -88,6 +108,41 @@ static void handleListAtari() {
     }
     out += "\"";
     out += response.name(i);
+    out += "\"";
+  }
+  out += "]}";
+
+  server.send(200, "application/json", out);
+}
+
+// GET /drives -> {drives:["A","B",...]}. PFTD-only (see CableLink::drives());
+// 503 if the link is down, 404 if PFTD hasn't confirmed presence.
+static void handleDrives() {
+  if (!cableLink.online()) {
+    server.send(503, "text/plain", "Portfolio not connected");
+    return;
+  }
+
+  if (!cableLink.helloChecked() || !cableLink.pftdPresent()) {
+    server.send(404, "text/plain", "PFTD not present");
+    return;
+  }
+
+  uint8_t driveCount = 0;
+  const PofoResult result = cableLink.drives(&driveCount);
+  if (result != PofoResult::OK) {
+    logger.warnf("DRIVES failed: %u", static_cast<unsigned>(result));
+    server.send(500, "text/plain", "DRIVES failed");
+    return;
+  }
+
+  String out = "{\"drives\":[";
+  for (uint8_t i = 0; i < driveCount; i++) {
+    if (i > 0) {
+      out += ',';
+    }
+    out += "\"";
+    out += static_cast<char>('A' + i);
     out += "\"";
   }
   out += "]}";
@@ -203,6 +258,7 @@ void webApiBegin() {
   server.on("/status", HTTP_GET, handleStatus);
   server.on("/listESP32", HTTP_GET, handleListEsp32);
   server.on("/listAtari", HTTP_GET, handleListAtari);
+  server.on("/drives", HTTP_GET, handleDrives);
   server.on("/upload", HTTP_POST, handleUpload, handleUploadData);
   server.on("/sendToAtari", HTTP_POST, handleSendToAtari);
   server.on("/downloadFromAtari", HTTP_POST, handleDownloadFromAtari);
