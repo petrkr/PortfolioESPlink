@@ -22,6 +22,8 @@
 #include "WebApi.h"
 #include "OtaControl.h"
 
+#define OTA_ENABLE_ON_BOOT 1
+
 static log4mcu::Logger& logger = log4mcu::Logger::get("PortfolioESPlink");
 static log4mcu::SerialLogAppender serialAppender(Serial);
 
@@ -66,6 +68,10 @@ void setup() {
   logger.infof("Connected! IP address: %s", WiFi.localIP().toString().c_str());
 
   webApiBegin();
+
+#if OTA_ENABLE_ON_BOOT
+  otaControlEnable();
+#endif
 
   if (!cableLink.begin(CABLE_CLK_IN, CABLE_DATA_IN, CABLE_CLK_OUT, CABLE_DATA_OUT)) {
     logger.error("PofoSmartCable begin failed");
