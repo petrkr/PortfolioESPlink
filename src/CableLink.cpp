@@ -50,10 +50,34 @@ bool CableLink::busy() const {
   return busy_;
 }
 
-void CableLink::queueTransmit(const String& localPath, const String& pofoPath, bool overwrite) {
+bool CableLink::requestTransmit(const String& localPath, const String& pofoPath, bool overwrite) {
+  if (pendingDirection_ != Direction::NONE) {
+    return false;
+  }
+
+  pendingDirection_ = Direction::TRANSMIT;
   pendingLocalPath_ = localPath;
   pendingPofoPath_ = pofoPath;
   pendingOverwrite_ = overwrite;
+  lastError_ = "";
+  return true;
+}
+
+bool CableLink::requestReceive(const String& pofoPath, const String& localPath, bool overwrite) {
+  if (pendingDirection_ != Direction::NONE) {
+    return false;
+  }
+
+  if (!overwrite && LittleFS.exists(localPath)) {
+    return false;
+  }
+
+  pendingDirection_ = Direction::RECEIVE;
+  pendingPofoPath_ = pofoPath;
+  pendingLocalPath_ = localPath;
+  pendingOverwrite_ = overwrite;
+  lastError_ = "";
+  return true;
 }
 
 PofoResult CableLink::list(const char* path, PofoFileTransferList* response) {
@@ -61,36 +85,57 @@ PofoResult CableLink::list(const char* path, PofoFileTransferList* response) {
 }
 
 void CableLink::processPending() {
-  if (pendingLocalPath_.isEmpty() || !cable_.online()) {
+  if (pendingDirection_ == Direction::NONE || !cable_.online()) {
     return;
   }
 
-  File file = LittleFS.open(pendingLocalPath_, "r");
-  if (!file) {
-    logger.warnf("Cannot open queued file: %s", pendingLocalPath_.c_str());
-    pendingLocalPath_ = "";
-    pendingPofoPath_ = "";
-    return;
-  }
-
-  const size_t length = file.size();
-  logger.infof("Transmitting %s to %s (%u bytes)", pendingLocalPath_.c_str(),
-               pendingPofoPath_.c_str(), static_cast<unsigned>(length));
-
+  const Direction direction = pendingDirection_;
   busy_ = true;
-  total_ = length;
   transferred_ = 0;
+  total_ = 0;
 
-  const PofoResult result =
-      fileTransfer_.transmitFile(pendingPofoPath_.c_str(), file, length, pendingOverwrite_);
-  file.close();
+  PofoResult result;
+  if (direction == Direction::TRANSMIT) {
+    File file = LittleFS.open(pendingLocalPath_, "r");
+    if (!file) {
+      lastError_ = "Cannot open local file";
+      logger.warnf("Cannot open queued file: %s", pendingLocalPath_.c_str());
+      pendingDirection_ = Direction::NONE;
+      busy_ = false;
+      return;
+    }
+
+    const size_t length = file.size();
+    total_ = length;
+    logger.infof("Transmitting %s to %s (%u bytes)", pendingLocalPath_.c_str(),
+                 pendingPofoPath_.c_str(), static_cast<unsigned>(length));
+
+    result = fileTransfer_.transmitFile(pendingPofoPath_.c_str(), file, length, pendingOverwrite_);
+    file.close();
+  } else {
+    File file = LittleFS.open(pendingLocalPath_, "w");
+    if (!file) {
+      lastError_ = "Cannot create local file";
+      logger.warnf("Cannot create local file: %s", pendingLocalPath_.c_str());
+      pendingDirection_ = Direction::NONE;
+      busy_ = false;
+      return;
+    }
+
+    logger.infof("Receiving %s into %s", pendingPofoPath_.c_str(), pendingLocalPath_.c_str());
+
+    result = fileTransfer_.receiveFile(pendingPofoPath_.c_str(), file);
+    file.close();
+  }
 
   if (result != PofoResult::OK) {
-    logger.warnf("TransmitFile failed: %u", static_cast<unsigned>(result));
+    lastError_ = "Transfer failed (" + String(static_cast<unsigned>(result)) + ")";
+    logger.warnf("Transfer failed: %u", static_cast<unsigned>(result));
   } else {
-    logger.info("Transmit complete");
+    logger.info("Transfer complete");
   }
 
+  pendingDirection_ = Direction::NONE;
   pendingLocalPath_ = "";
   pendingPofoPath_ = "";
   busy_ = false;

@@ -1,10 +1,12 @@
 #pragma once
 
 // Starts the HTTP server and registers the REST API used by data/web:
-//   GET  /status                -> {status, connected, phase, done, total}
-//   GET  /listESP32?dir=PATH    -> {items:[{name,type}]}
-//   GET  /listAtari?dir=PATH    -> {files:[...]}
-//   POST /upload?overwrite=1    -> 202 once queued for transfer to the Portfolio
+//   GET  /status                              -> {status, connected, phase, done, total, error}
+//   GET  /listESP32?dir=PATH                  -> {items:[{name,type}]}, rooted at DATA_DIR
+//   GET  /listAtari?dir=PATH                  -> {files:[...]}
+//   POST /upload?overwrite&toAtari&destDir=   -> 202, stores under DATA_DIR, optionally also sends to Portfolio
+//   POST /sendToAtari?path&overwrite&destDir= -> 202 once started, path is DATA_DIR-relative
+//   POST /downloadFromAtari?path&overwrite    -> 202 once started, path is the full Portfolio path
 void webApiBegin();
 
 // Must be called from loop().
