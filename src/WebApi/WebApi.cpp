@@ -38,6 +38,7 @@ void webApiBegin() {
   registerDeleteRoutes();
   registerRenameRoutes();
   registerCopyRoutes();
+  registerDateTimeRoutes();
 
   server.serveStatic("/files/", LittleFS, DATA_DIR);
   server.serveStatic("/", LittleFS, "/web/");

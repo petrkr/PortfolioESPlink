@@ -29,3 +29,4 @@ void registerRmdirRoutes();
 void registerDeleteRoutes();
 void registerRenameRoutes();
 void registerCopyRoutes();
+void registerDateTimeRoutes();

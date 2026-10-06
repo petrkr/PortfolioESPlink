@@ -112,6 +112,25 @@ class PortfolioLink {
   // the wire - see copy.inc). Defined in Copy.cpp.
   PofoResult copy(const char* srcPath, const char* dstPath, uint8_t* errCode);
 
+  // Reads the Portfolio's current system date/time, packed DOS format
+  // (see ~/git/POFOSCAB/src/pftd/datetime.inc: date bits
+  // 15-9=year-1980/8-5=month/4-0=day, time bits
+  // 15-11=hour/10-5=minute/4-0=second/2 - identical encoding to
+  // listExt()'s per-entry date/time). PFTD-only; requires hello() to have
+  // reported PFTD present first. Has no documented failure mode on the
+  // Portfolio side, so only transport-level PofoResult values are
+  // returned. Defined in DateTime.cpp.
+  PofoResult getDateTime(uint16_t* dosDate, uint16_t* dosTime);
+
+  // Sets the Portfolio's current system date/time, packed DOS format (see
+  // getDateTime()). PFTD-only; requires hello() to have reported PFTD
+  // present first. Returns PofoResult::REMOTE_ERROR (with *errCode set to
+  // 4=access denied for an out-of-range date/time value, or
+  // 0xFF=critical error) when the Portfolio rejected the request; other
+  // PofoResult values indicate a transport-level failure. Defined in
+  // DateTime.cpp.
+  PofoResult setDateTime(uint16_t dosDate, uint16_t dosTime, uint8_t* errCode);
+
  private:
   PofoSmartCable& cable_;
   PofoFileTransfer fileTransfer_;
