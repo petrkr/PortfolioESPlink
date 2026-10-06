@@ -41,7 +41,7 @@ bool CableLink::begin(int clkIn, int dataIn, int clkOut, int dataOut) {
     return false;
   }
   cable_.setLinkStateCallback(onLinkStateChanged);
-  portfolioLink_.setProgressCallback(onProgress);
+  portfolioLink.setProgressCallback(onProgress);
   return true;
 }
 
@@ -89,18 +89,6 @@ bool CableLink::requestReceive(const String& pofoPath, const String& localPath, 
   return true;
 }
 
-PofoResult CableLink::list(const char* path, PofoFileTransferList* response) {
-  return portfolioLink_.list(path, response);
-}
-
-PofoResult CableLink::drives(uint8_t* driveCount) {
-  return portfolioLink_.drives(driveCount);
-}
-
-PofoResult CableLink::listExt(const char* path, PortfolioLinkListExt* response) {
-  return portfolioLink_.listExt(path, response);
-}
-
 void CableLink::processHello() {
   if (!helloPending_ || busy_ || !cable_.online()) {
     return;
@@ -108,7 +96,7 @@ void CableLink::processHello() {
   helloPending_ = false;
 
   PortfolioLinkHello info;
-  const PofoResult result = portfolioLink_.hello(&info);
+  const PofoResult result = portfolioLink.hello(&info);
   helloChecked_ = true;
   pftdPresent_ = result == PofoResult::OK;
   if (pftdPresent_) {
@@ -147,7 +135,7 @@ void CableLink::processPending() {
     logger.infof("Transmitting %s to %s (%u bytes)", pendingLocalPath_.c_str(),
                  pendingPofoPath_.c_str(), static_cast<unsigned>(length));
 
-    result = portfolioLink_.transmitFile(pendingPofoPath_.c_str(), file, length, pendingOverwrite_);
+    result = portfolioLink.transmitFile(pendingPofoPath_.c_str(), file, length, pendingOverwrite_);
     file.close();
   } else {
     File file = LittleFS.open(pendingLocalPath_, "w");
@@ -161,7 +149,7 @@ void CableLink::processPending() {
 
     logger.infof("Receiving %s into %s", pendingPofoPath_.c_str(), pendingLocalPath_.c_str());
 
-    result = portfolioLink_.receiveFile(pendingPofoPath_.c_str(), file);
+    result = portfolioLink.receiveFile(pendingPofoPath_.c_str(), file);
     file.close();
   }
 

@@ -13,6 +13,13 @@
 // requestReceive() and return immediately, polling busy()/lastError() via
 // /status to report progress.
 class CableLink {
+ private:
+  // Declared first (even though private) so it's initialized before the
+  // public portfolioLink member below, which holds a reference to it -
+  // member init order follows declaration order, not access-specifier
+  // grouping.
+  PofoSmartCable cable_;
+
  public:
   bool begin(int clkIn, int dataIn, int clkOut, int dataOut);
   void loop();
@@ -30,14 +37,14 @@ class CableLink {
   // pending/running, or if localPath exists and overwrite is false.
   bool requestReceive(const String& pofoPath, const String& localPath, bool overwrite);
 
-  // path is required, for example "*.*" or "C:\\*.*".
-  PofoResult list(const char* path, PofoFileTransferList* response);
-
-  // PFTD-only. See PortfolioLink::drives().
-  PofoResult drives(uint8_t* driveCount);
-
-  // PFTD-only. See PortfolioLink::listExt().
-  PofoResult listExt(const char* path, PortfolioLinkListExt* response);
+  // Direct access for synchronous, non-cached PFTD/ROM commands (list(),
+  // drives(), listExt(), ...) that don't need CableLink's async transfer
+  // queue or HELLO caching - callers run these straight from an HTTP
+  // handler, e.g. cableLink.portfolioLink.list(...). Must only be used
+  // while online() - PortfolioLink itself doesn't track link state. Public
+  // data member (not a getter) so const-ness follows cableLink's own:
+  // a const CableLink gives const access, same as any other member.
+  PortfolioLink portfolioLink{cable_};
 
   // Whether PFTD answered HELLO after the link's last offline->online
   // transition, and its reported identity if so. HELLO itself runs once per
@@ -71,9 +78,6 @@ class CableLink {
 
   void processPending();
   void processHello();
-
-  PofoSmartCable cable_;
-  PortfolioLink portfolioLink_{cable_};
 
   Direction pendingDirection_ = Direction::NONE;
   String pendingLocalPath_;

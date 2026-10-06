@@ -94,7 +94,7 @@ static void handleListAtari() {
   logger.infof("listAtari: %s", path.c_str());
 
   PofoFileTransferList response;
-  const PofoResult result = cableLink.list(path.c_str(), &response);
+  const PofoResult result = cableLink.portfolioLink.list(path.c_str(), &response);
   if (result != PofoResult::OK) {
     logger.warnf("LIST failed: %u", static_cast<unsigned>(result));
     server.send(500, "text/plain", "LIST failed");
@@ -116,7 +116,7 @@ static void handleListAtari() {
 }
 
 // GET /listAtariExt?dir=PATH -> {items:[{name,type,size,modified}],
-// freeBytes,totalBytes}. PFTD-only (see CableLink::listExt()); 503 if the
+// freeBytes,totalBytes}. PFTD-only (see PortfolioLink::listExt()); 503 if the
 // link is down, 404 if PFTD hasn't confirmed presence.
 static void handleListAtariExt() {
   if (!server.hasArg("dir")) {
@@ -138,7 +138,7 @@ static void handleListAtariExt() {
   logger.infof("listAtariExt: %s", path.c_str());
 
   PortfolioLinkListExt response;
-  const PofoResult result = cableLink.listExt(path.c_str(), &response);
+  const PofoResult result = cableLink.portfolioLink.listExt(path.c_str(), &response);
   if (result != PofoResult::OK) {
     logger.warnf("LIST_EXT failed: %u", static_cast<unsigned>(result));
     server.send(500, "text/plain", "LIST_EXT failed");
@@ -165,7 +165,7 @@ static void handleListAtariExt() {
   server.send(200, "application/json", out);
 }
 
-// GET /drives -> {drives:["A","B",...]}. PFTD-only (see CableLink::drives());
+// GET /drives -> {drives:["A","B",...]}. PFTD-only (see PortfolioLink::drives());
 // 503 if the link is down, 404 if PFTD hasn't confirmed presence.
 static void handleDrives() {
   if (!cableLink.online()) {
@@ -179,7 +179,7 @@ static void handleDrives() {
   }
 
   uint8_t driveCount = 0;
-  const PofoResult result = cableLink.drives(&driveCount);
+  const PofoResult result = cableLink.portfolioLink.drives(&driveCount);
   if (result != PofoResult::OK) {
     logger.warnf("DRIVES failed: %u", static_cast<unsigned>(result));
     server.send(500, "text/plain", "DRIVES failed");
