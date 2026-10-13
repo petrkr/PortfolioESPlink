@@ -13,15 +13,13 @@ const uint8_t kStatusOk = 0x20;
 
 }  // namespace
 
-// See ~/git/POFOSCAB/src/pftd/copy.inc for the wire format: request is
-// [0x8C, 0x00, 0x70, ASCIIZ source path, ASCIIZ destination path] (two
-// consecutive NUL-terminated strings, identical shape to RENAME's request),
-// response is [status, errcode] with status 0x20=ok/0x10=error (errcode
-// only meaningful on error: 1=not found, 3=disk full, 4=access denied,
-// 0xFF=critical error). Files only, no directory recursion. Unlike
-// rename(), this works cross-drive - it's a real data copy, not a
-// directory-entry rewrite. The destination is always overwritten if it
-// exists.
+// Wire format: request is [0x8C, 0x00, 0x70, ASCIIZ source path, ASCIIZ
+// destination path] (two consecutive NUL-terminated strings), response is
+// [status, errcode] with status 0x20=ok/0x10=error (errcode only
+// meaningful on error: 1=not found, 3=disk full, 4=access denied,
+// 0xFF=critical error). Files only, no directory recursion, cross-drive
+// included - a real data copy, not a directory-entry rewrite. The
+// destination is always overwritten if it exists.
 PofoResult PortfolioLink::copy(const char* srcPath, const char* dstPath,
                                uint8_t* errCode) {
   if (srcPath == 0 || dstPath == 0 || errCode == 0) {

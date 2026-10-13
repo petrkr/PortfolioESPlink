@@ -27,9 +27,9 @@ String toHex(const uint8_t* data, size_t length) {
 // POST /sendRaw?data=<hex> -> {ok,response:"<hex>"} on success,
 // {ok:false,message} on failure. Sends the given bytes as a single block
 // straight to the cable and returns whatever comes back, unparsed - a
-// protocol-level debug/probing escape hatch (see PortfolioLink::sendRaw()).
-// Works regardless of whether PFTD is present - it's the caller's job to
-// build a valid request; only requires the link itself to be online.
+// protocol-level debug/probing escape hatch. Works regardless of whether
+// PFTD is present - it's the caller's job to build a valid request; only
+// requires the link itself to be online.
 static void handleSendRaw() {
   if (!server.hasArg("data")) {
     server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");

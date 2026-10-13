@@ -8,11 +8,10 @@ static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 
 // POST /copyAtari?srcPath=<Portfolio full path>&dstPath=<Portfolio full
 // path> -> {ok,message} on success, {ok:false,message,errcode?} on failure.
-// PFTD-only (see PortfolioLink::copy()); 503 if the link is down, 404 if
-// PFTD hasn't confirmed presence, 409 if the Portfolio rejected the request
-// (errcode is the PFTD error code in that case). Blocks for the whole copy
-// duration - same tradeoff as every other synchronous PFTD command here,
-// but likely to be noticeably longer for large files.
+// PFTD-only; 503 if the link is down, 404 if PFTD hasn't confirmed
+// presence, 409 if the Portfolio rejected the request (errcode is the PFTD
+// error code in that case). Blocks for the whole copy duration, which can
+// be noticeably long for large files.
 static void handleCopyAtari() {
   if (!server.hasArg("srcPath") || !server.hasArg("dstPath")) {
     server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");

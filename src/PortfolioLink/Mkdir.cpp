@@ -13,10 +13,10 @@ const uint8_t kStatusOk = 0x20;
 
 }  // namespace
 
-// See ~/git/POFOSCAB/src/pftd/mkdir.inc for the wire format: request is
-// [0x88, 0x00, 0x70, ASCIIZ path], response is [status, errcode] with
-// status 0x20=ok/0x10=error (errcode only meaningful on error: 1=not found,
-// 2=already exists, 3=disk full, 4=access denied, 0xFF=critical error).
+// Wire format: request is [0x88, 0x00, 0x70, ASCIIZ path], response is
+// [status, errcode] with status 0x20=ok/0x10=error (errcode only
+// meaningful on error: 1=not found, 2=already exists, 3=disk full,
+// 4=access denied, 0xFF=critical error).
 PofoResult PortfolioLink::mkdir(const char* path, uint8_t* errCode) {
   if (path == 0 || errCode == 0) {
     return PofoResult::INVALID_ARGUMENT;

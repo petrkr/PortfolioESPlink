@@ -13,9 +13,9 @@ const uint8_t kStatusOk = 0x20;
 
 }  // namespace
 
-// See ~/git/POFOSCAB/src/pftd/rmdir.inc for the wire format: request is
-// [0x8A, 0x00, 0x70, ASCIIZ path], response is [status, errcode] with
-// status 0x20=ok/0x10=error (errcode only meaningful on error: 1=not found,
+// Wire format: request is [0x8A, 0x00, 0x70, ASCIIZ path], response is
+// [status, errcode] with status 0x20=ok/0x10=error (errcode only
+// meaningful on error: 1=not found,
 // 4=access denied (also covers "not empty"), 0xFF=critical error).
 PofoResult PortfolioLink::rmdir(const char* path, uint8_t* errCode) {
   if (path == 0 || errCode == 0) {

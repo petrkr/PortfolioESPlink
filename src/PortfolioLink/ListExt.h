@@ -5,10 +5,9 @@
 
 #include <PofoSmartCableResult.h>
 
-// Parsed response to the PFTD LIST_EXT command (payload[0]=0x86). See
-// ~/git/POFOSCAB/src/pftd/list.inc for the wire format this parses: a
-// count-prefixed list of (attr, size, date, time, name) entries, followed
-// by free/total bytes on the pattern's drive.
+// Parsed response to the PFTD LIST_EXT command (payload[0]=0x86). Wire
+// format: a count-prefixed list of (attr, size, date, time, name) entries,
+// followed by free/total bytes on the pattern's drive.
 class PortfolioLinkListExt {
  public:
   PortfolioLinkListExt();
@@ -17,8 +16,8 @@ class PortfolioLinkListExt {
   size_t count() const { return count_; }
   const char* name(size_t index) const;
 
-  // Full DOS attribute byte (see list.inc: bit0=read-only, bit1=hidden,
-  // bit2=system, bit4=directory, bit5=archive).
+  // Full DOS attribute byte (bit0=read-only, bit1=hidden, bit2=system,
+  // bit4=directory, bit5=archive).
   uint8_t attr(size_t index) const;
   bool isDirectory(size_t index) const;
   uint32_t size(size_t index) const;

@@ -8,10 +8,10 @@ static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 
 // POST /renameAtari?oldPath=<Portfolio full path>&newPath=<Portfolio full
 // path> -> {ok,message} on success, {ok:false,message,errcode?} on failure.
-// PFTD-only (see PortfolioLink::rename()); 503 if the link is down, 404 if
-// PFTD hasn't confirmed presence, 409 if the Portfolio rejected the request
-// (errcode is the PFTD error code in that case). No frontend wiring yet -
-// index.htm's rename button is still disabled.
+// PFTD-only; 503 if the link is down, 404 if PFTD hasn't confirmed
+// presence, 409 if the Portfolio rejected the request (errcode is the PFTD
+// error code in that case). No frontend wiring yet - index.htm's rename
+// button is still disabled.
 static void handleRenameAtari() {
   if (!server.hasArg("oldPath") || !server.hasArg("newPath")) {
     server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");

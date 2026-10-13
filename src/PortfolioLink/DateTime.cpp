@@ -12,10 +12,9 @@ const uint8_t kStatusOk = 0x20;
 
 }  // namespace
 
-// See ~/git/POFOSCAB/src/pftd/datetime.inc for the wire format: request is
-// a single byte (payload[0]=0x8D, no path - same shape as DRIVES/HELLO),
-// response is a fixed 4 bytes: packed date(2B) + packed time(2B), no
-// status/errcode byte (AH=0x2A/AH=0x2C have no documented failure mode).
+// Wire format: request is a single byte (payload[0]=0x8D, no path - same
+// shape as DRIVES/HELLO), response is a fixed 4 bytes: packed date(2B) +
+// packed time(2B), no status/errcode byte (no documented failure mode).
 // Packed layout: date bits 15-9=year-1980/8-5=month/4-0=day, time bits
 // 15-11=hour/10-5=minute/4-0=second/2.
 PofoResult PortfolioLink::getDateTime(uint16_t* dosDate, uint16_t* dosTime) {
@@ -49,9 +48,8 @@ PofoResult PortfolioLink::getDateTime(uint16_t* dosDate, uint16_t* dosTime) {
 
 // Request is [0x8E, 0x00, 0x70, packed date(2B), packed time(2B)] - a
 // fixed-size binary payload, not an ASCIIZ string. Response (fixed 2
-// bytes), same status/errcode shape as mkdir()/deleteFile()/rmdir()/
-// rename()/copy(): status 0x20=ok/0x10=error, errcode 4=access denied
-// (out-of-range date or time value), 0xFF=critical error.
+// bytes): status 0x20=ok/0x10=error, errcode 4=access denied (out-of-range
+// date or time value), 0xFF=critical error.
 PofoResult PortfolioLink::setDateTime(uint16_t dosDate, uint16_t dosTime, uint8_t* errCode) {
   if (errCode == 0) {
     return PofoResult::INVALID_ARGUMENT;

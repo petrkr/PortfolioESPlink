@@ -9,8 +9,7 @@
 
 class PofoSmartCable;
 
-// Response to the PFTD HELLO command (payload[0]=0x80). See
-// ~/git/POFOSCAB/src/pftd/hello.inc for the wire format this parses:
+// Response to the PFTD HELLO command (payload[0]=0x80). Wire format:
 // magic "PFD1" + 4-byte build id + major/minor/patch + 1 reserved byte.
 struct PortfolioLinkHello {
   uint32_t buildId = 0;
@@ -48,87 +47,76 @@ class PortfolioLink {
   PofoResult hello(PortfolioLinkHello* response);
 
   // Queries how many logical drives DOS knows about (1 = A: only, 2 = A:
-  // and B:, ...). PFTD-only (see ~/git/POFOSCAB/src/pftd/drives.inc);
-  // requires hello() to have reported PFTD present first. Defined in
-  // Drives.cpp.
+  // and B:, ...). PFTD-only; requires hello() to have reported PFTD
+  // present first.
   PofoResult drives(uint8_t* driveCount);
 
   // Directory listing with attribute/size/date/time per entry, plus
-  // free/total space on the pattern's drive - unlike list() (stock ROM,
-  // bare names only). PFTD-only (see
-  // ~/git/POFOSCAB/src/pftd/list.inc); requires hello() to have reported
-  // PFTD present first. path is required, for example "*.*" or
-  // "C:\\*.*". Defined in ListExt.cpp.
+  // free/total space on the pattern's drive. PFTD-only; requires hello()
+  // to have reported PFTD present first. path is required, for example
+  // "*.*" or "C:\\*.*".
   PofoResult listExt(const char* path, PortfolioLinkListExt* response);
 
-  // Creates a directory on the Portfolio. PFTD-only (see
-  // ~/git/POFOSCAB/src/pftd/mkdir.inc); requires hello() to have reported
-  // PFTD present first. Returns PofoResult::REMOTE_ERROR (with *errCode set
-  // to the PFTD error code: 1=not found, 2=already exists, 3=disk full,
-  // 4=access denied, 0xFF=critical error) when the Portfolio rejected the
-  // request; other PofoResult values indicate a transport-level failure.
-  // Defined in Mkdir.cpp.
+  // Creates a directory on the Portfolio. PFTD-only; requires hello() to
+  // have reported PFTD present first. Returns PofoResult::REMOTE_ERROR
+  // (with *errCode set to the PFTD error code: 1=not found, 2=already
+  // exists, 3=disk full, 4=access denied, 0xFF=critical error) when the
+  // Portfolio rejected the request; other PofoResult values indicate a
+  // transport-level failure.
   PofoResult mkdir(const char* path, uint8_t* errCode);
 
-  // Removes an empty directory on the Portfolio. PFTD-only (see
-  // ~/git/POFOSCAB/src/pftd/rmdir.inc); requires hello() to have reported
-  // PFTD present first. Returns PofoResult::REMOTE_ERROR (with *errCode set
-  // to the PFTD error code: 1=not found, 4=access denied (also covers "not
-  // empty"), 0xFF=critical error) when the Portfolio rejected the request;
-  // other PofoResult values indicate a transport-level failure. Defined in
-  // Rmdir.cpp.
+  // Removes an empty directory on the Portfolio. PFTD-only; requires
+  // hello() to have reported PFTD present first. Returns
+  // PofoResult::REMOTE_ERROR (with *errCode set to the PFTD error code:
+  // 1=not found, 4=access denied (also covers "not empty"), 0xFF=critical
+  // error) when the Portfolio rejected the request; other PofoResult
+  // values indicate a transport-level failure.
   PofoResult rmdir(const char* path, uint8_t* errCode);
 
-  // Deletes a file (not a directory - see rmdir()) on the Portfolio.
-  // PFTD-only (see ~/git/POFOSCAB/src/pftd/delete.inc); requires hello() to
-  // have reported PFTD present first. Named deleteFile, not delete: delete
-  // is a reserved C++ keyword. Returns PofoResult::REMOTE_ERROR (with
-  // *errCode set to the PFTD error code: 1=not found, 3=disk full,
-  // 4=access denied, 0xFF=critical error) when the Portfolio rejected the
-  // request; other PofoResult values indicate a transport-level failure.
-  // Defined in Delete.cpp.
+  // Deletes a file (not a directory) on the Portfolio. PFTD-only;
+  // requires hello() to have reported PFTD present first. Named
+  // deleteFile, not delete: delete is a reserved C++ keyword.
+  // Returns PofoResult::REMOTE_ERROR (with *errCode set to the PFTD error
+  // code: 1=not found, 3=disk full, 4=access denied, 0xFF=critical error)
+  // when the Portfolio rejected the request; other PofoResult values
+  // indicate a transport-level failure.
   PofoResult deleteFile(const char* path, uint8_t* errCode);
 
   // Renames/moves a file or directory on the Portfolio (same-drive only -
-  // DOS rename cannot cross drives). PFTD-only (see
-  // ~/git/POFOSCAB/src/pftd/rename.inc); requires hello() to have reported
-  // PFTD present first. Returns PofoResult::REMOTE_ERROR (with *errCode set
-  // to the PFTD error code: 1=not found, 4=access denied (also covers
-  // "destination already exists" and cross-drive rename), 0xFF=critical
-  // error) when the Portfolio rejected the request; other PofoResult values
-  // indicate a transport-level failure. Defined in Rename.cpp.
+  // DOS rename cannot cross drives). PFTD-only; requires hello() to have
+  // reported PFTD present first. Returns PofoResult::REMOTE_ERROR (with
+  // *errCode set to the PFTD error code: 1=not found, 4=access denied
+  // (also covers "destination already exists" and cross-drive rename),
+  // 0xFF=critical error) when the Portfolio rejected the request; other
+  // PofoResult values indicate a transport-level failure.
   PofoResult rename(const char* oldPath, const char* newPath, uint8_t* errCode);
 
   // Copies a file on the Portfolio, source to destination (files only, no
-  // directory recursion); unlike rename(), works cross-drive since it's a
-  // real data copy, not a directory-entry rewrite. The destination is
-  // always overwritten if it exists. PFTD-only (see
-  // ~/git/POFOSCAB/src/pftd/copy.inc); requires hello() to have reported
-  // PFTD present first. Returns PofoResult::REMOTE_ERROR (with *errCode set
-  // to the PFTD error code: 1=not found, 3=disk full, 4=access denied,
-  // 0xFF=critical error) when the Portfolio rejected the request; other
-  // PofoResult values indicate a transport-level failure. This call blocks
-  // for the whole copy duration (synchronous, no progress reporting over
-  // the wire - see copy.inc). Defined in Copy.cpp.
+  // directory recursion), cross-drive included - a real data copy, not a
+  // directory-entry rewrite. The destination is always overwritten if it
+  // exists. PFTD-only; requires hello() to have
+  // reported PFTD present first. Returns PofoResult::REMOTE_ERROR (with
+  // *errCode set to the PFTD error code: 1=not found, 3=disk full,
+  // 4=access denied, 0xFF=critical error) when the Portfolio rejected the
+  // request; other PofoResult values indicate a transport-level failure.
+  // This call blocks for the whole copy duration (synchronous, no
+  // progress reporting over the wire).
   PofoResult copy(const char* srcPath, const char* dstPath, uint8_t* errCode);
 
   // Reads the Portfolio's current system date/time, packed DOS format
-  // (see ~/git/POFOSCAB/src/pftd/datetime.inc: date bits
-  // 15-9=year-1980/8-5=month/4-0=day, time bits
-  // 15-11=hour/10-5=minute/4-0=second/2 - identical encoding to
-  // listExt()'s per-entry date/time). PFTD-only; requires hello() to have
-  // reported PFTD present first. Has no documented failure mode on the
-  // Portfolio side, so only transport-level PofoResult values are
-  // returned. Defined in DateTime.cpp.
+  // (date bits 15-9=year-1980/8-5=month/4-0=day, time bits
+  // 15-11=hour/10-5=minute/4-0=second/2). PFTD-only; requires hello() to
+  // have reported PFTD present first. Has no documented failure mode on
+  // the Portfolio side, so only transport-level PofoResult values are
+  // returned.
   PofoResult getDateTime(uint16_t* dosDate, uint16_t* dosTime);
 
-  // Sets the Portfolio's current system date/time, packed DOS format (see
-  // getDateTime()). PFTD-only; requires hello() to have reported PFTD
-  // present first. Returns PofoResult::REMOTE_ERROR (with *errCode set to
+  // Sets the Portfolio's current system date/time, packed DOS format.
+  // PFTD-only; requires hello() to have reported PFTD present first.
+  // Returns PofoResult::REMOTE_ERROR (with *errCode set to
   // 4=access denied for an out-of-range date/time value, or
   // 0xFF=critical error) when the Portfolio rejected the request; other
-  // PofoResult values indicate a transport-level failure. Defined in
-  // DateTime.cpp.
+  // PofoResult values indicate a transport-level failure.
   PofoResult setDateTime(uint16_t dosDate, uint16_t dosTime, uint8_t* errCode);
 
   // Sends an arbitrary pre-built block and returns whatever comes back,
@@ -136,10 +124,18 @@ class PortfolioLink {
   // commands that don't have (or don't yet have) their own typed method
   // here. *responsePayload is caller-owned on return (release with
   // PofoSmartCable::releaseBlock()). Works regardless of whether PFTD is
-  // present - it's the caller's job to build a valid request. Defined in
-  // SendRaw.cpp.
+  // present - it's the caller's job to build a valid request.
   PofoResult sendRaw(const uint8_t* data, size_t length, uint8_t** responsePayload,
                      size_t* responseLength);
+
+  // Writes arbitrary text at an arbitrary row (0-7)/col (0-39) on the
+  // Portfolio's own LCD. Diagnostic/debug tool, not a file-transfer
+  // command - no bounds checking on the Atari side. PFTD-only; requires
+  // hello() to have reported PFTD present first. Returns
+  // PofoResult::REMOTE_ERROR when the Portfolio reported failure (no
+  // errcode defined for this command); other PofoResult values indicate a
+  // transport-level failure.
+  PofoResult drawAscii(uint8_t row, uint8_t col, const char* text);
 
  private:
   PofoSmartCable& cable_;

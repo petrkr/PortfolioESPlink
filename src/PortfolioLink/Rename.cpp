@@ -13,12 +13,11 @@ const uint8_t kStatusOk = 0x20;
 
 }  // namespace
 
-// See ~/git/POFOSCAB/src/pftd/rename.inc for the wire format: request is
-// [0x8B, 0x00, 0x70, ASCIIZ old path, ASCIIZ new path] (two consecutive
-// NUL-terminated strings), response is [status, errcode] with status
-// 0x20=ok/0x10=error (errcode only meaningful on error: 1=not found,
-// 4=access denied (also covers "destination already exists" and cross-drive
-// rename), 0xFF=critical error).
+// Wire format: request is [0x8B, 0x00, 0x70, ASCIIZ old path, ASCIIZ new
+// path] (two consecutive NUL-terminated strings), response is [status,
+// errcode] with status 0x20=ok/0x10=error (errcode only meaningful on
+// error: 1=not found, 4=access denied (also covers "destination already
+// exists" and cross-drive rename), 0xFF=critical error).
 PofoResult PortfolioLink::rename(const char* oldPath, const char* newPath,
                                  uint8_t* errCode) {
   if (oldPath == 0 || newPath == 0 || errCode == 0) {

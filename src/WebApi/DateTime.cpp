@@ -79,9 +79,8 @@ String formatIsoDateTime(uint16_t dosDate, uint16_t dosTime) {
 
 }  // namespace
 
-// GET /datetimeAtari -> {datetime:"YYYY-MM-DDTHH:MM:SS"}. PFTD-only (see
-// PortfolioLink::getDateTime()); 503 if the link is down, 404 if PFTD
-// hasn't confirmed presence.
+// GET /datetimeAtari -> {datetime:"YYYY-MM-DDTHH:MM:SS"}. PFTD-only; 503 if
+// the link is down, 404 if PFTD hasn't confirmed presence.
 static void handleGetDatetimeAtari() {
   if (!cableLink.online()) {
     server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
@@ -109,10 +108,10 @@ static void handleGetDatetimeAtari() {
 }
 
 // POST /datetimeAtari?datetime=YYYY-MM-DDTHH:MM:SS -> {ok,datetime} on
-// success, {ok:false,message,errcode?} on failure. PFTD-only (see
-// PortfolioLink::setDateTime()); 503 if the link is down, 404 if PFTD
-// hasn't confirmed presence, 409 if the Portfolio rejected the request
-// (errcode is the PFTD error code in that case).
+// success, {ok:false,message,errcode?} on failure. PFTD-only; 503 if the
+// link is down, 404 if PFTD hasn't confirmed presence, 409 if the
+// Portfolio rejected the request (errcode is the PFTD error code in that
+// case).
 static void handleSetDatetimeAtari() {
   if (!server.hasArg("datetime")) {
     server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");

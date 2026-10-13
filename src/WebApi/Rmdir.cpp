@@ -7,10 +7,9 @@
 static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 
 // POST /rmdirAtari?path=<Portfolio full path> -> {ok,message} on success,
-// {ok:false,message,errcode?} on failure. PFTD-only (see
-// PortfolioLink::rmdir()); 503 if the link is down, 404 if PFTD hasn't
-// confirmed presence, 409 if the Portfolio rejected the request (errcode is
-// the PFTD error code in that case).
+// {ok:false,message,errcode?} on failure. PFTD-only; 503 if the link is
+// down, 404 if PFTD hasn't confirmed presence, 409 if the Portfolio
+// rejected the request (errcode is the PFTD error code in that case).
 static void handleRmdirAtari() {
   if (!server.hasArg("path")) {
     server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
