@@ -31,3 +31,4 @@ void registerRenameRoutes();
 void registerCopyRoutes();
 void registerDateTimeRoutes();
 void registerSendRawRoutes();
+void registerDrawAsciiRoutes();
