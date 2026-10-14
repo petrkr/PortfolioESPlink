@@ -12,24 +12,24 @@ static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 // presence, 409 if the Portfolio rejected the request (errcode is the PFTD
 // error code in that case). No frontend wiring yet - index.htm's rename
 // button is still disabled.
-static void handleRenameAtari() {
-  if (!server.hasArg("oldPath") || !server.hasArg("newPath")) {
-    server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
+static void handleRenameAtari(AsyncWebServerRequest* request) {
+  if (!request->hasArg("oldPath") || !request->hasArg("newPath")) {
+    request->send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
     return;
   }
 
   if (!cableLink.online()) {
-    server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
+    request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
   if (!cableLink.helloChecked() || !cableLink.pftdPresent()) {
-    server.send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
+    request->send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
     return;
   }
 
-  const String oldPath = server.arg("oldPath");
-  const String newPath = server.arg("newPath");
+  const String oldPath = request->arg("oldPath");
+  const String newPath = request->arg("newPath");
   logger.infof("renameAtari: %s -> %s", oldPath.c_str(), newPath.c_str());
 
   uint8_t errCode = 0;
@@ -39,17 +39,17 @@ static void handleRenameAtari() {
     String out = "{\"ok\":false,\"message\":\"rename failed\",\"errcode\":";
     out += errCode;
     out += "}";
-    server.send(409, "application/json", out);
+    request->send(409, "application/json", out);
     return;
   }
 
   if (result != PofoResult::OK) {
     logger.warnf("RENAME failed: %u", static_cast<unsigned>(result));
-    server.send(500, "application/json", "{\"ok\":false,\"message\":\"RENAME failed\"}");
+    request->send(500, "application/json", "{\"ok\":false,\"message\":\"RENAME failed\"}");
     return;
   }
 
-  server.send(200, "application/json", "{\"ok\":true,\"message\":\"Renamed\"}");
+  request->send(200, "application/json", "{\"ok\":true,\"message\":\"Renamed\"}");
 }
 
 void registerRenameRoutes() {

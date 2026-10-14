@@ -6,7 +6,7 @@
 #include "../CableLink.h"
 #include "../OtaControl.h"
 
-static void handleStatus() {
+static void handleStatusAsync(AsyncWebServerRequest* request) {
   const bool connected = cableLink.online();
   const bool busy = cableLink.busy();
 
@@ -36,10 +36,9 @@ static void handleStatus() {
   }
 
   out += "}";
-
-  server.send(200, "application/json", out);
+  request->send(200, "application/json", out);
 }
 
 void registerStatusRoutes() {
-  server.on("/status", HTTP_GET, handleStatus);
+  server.on("/status", HTTP_GET, handleStatusAsync);
 }

@@ -75,6 +75,15 @@ class CableLink {
     helloPending_ = true;
   }
 
+  // Called by the link-state callback; not for application use. Clears the
+  // last known PFTD info on an online->offline transition, so /status stops
+  // reporting a stale pftd block once the Atari is gone.
+  void clearPftdInfo() {
+    helloPending_ = false;
+    helloChecked_ = false;
+    pftdPresent_ = false;
+  }
+
  private:
   enum class Direction { NONE, TRANSMIT, RECEIVE };
 

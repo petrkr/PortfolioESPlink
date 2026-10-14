@@ -10,23 +10,23 @@ static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 // {ok:false,message,errcode?} on failure. PFTD-only; 503 if the link is
 // down, 404 if PFTD hasn't confirmed presence, 409 if the Portfolio
 // rejected the request (errcode is the PFTD error code in that case).
-static void handleRmdirAtari() {
-  if (!server.hasArg("path")) {
-    server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
+static void handleRmdirAtari(AsyncWebServerRequest* request) {
+  if (!request->hasArg("path")) {
+    request->send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
     return;
   }
 
   if (!cableLink.online()) {
-    server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
+    request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
   if (!cableLink.helloChecked() || !cableLink.pftdPresent()) {
-    server.send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
+    request->send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
     return;
   }
 
-  const String path = server.arg("path");
+  const String path = request->arg("path");
   logger.infof("rmdirAtari: %s", path.c_str());
 
   uint8_t errCode = 0;
@@ -36,17 +36,17 @@ static void handleRmdirAtari() {
     String out = "{\"ok\":false,\"message\":\"rmdir failed\",\"errcode\":";
     out += errCode;
     out += "}";
-    server.send(409, "application/json", out);
+    request->send(409, "application/json", out);
     return;
   }
 
   if (result != PofoResult::OK) {
     logger.warnf("RMDIR failed: %u", static_cast<unsigned>(result));
-    server.send(500, "application/json", "{\"ok\":false,\"message\":\"RMDIR failed\"}");
+    request->send(500, "application/json", "{\"ok\":false,\"message\":\"RMDIR failed\"}");
     return;
   }
 
-  server.send(200, "application/json", "{\"ok\":true,\"message\":\"Directory removed\"}");
+  request->send(200, "application/json", "{\"ok\":true,\"message\":\"Directory removed\"}");
 }
 
 void registerRmdirRoutes() {

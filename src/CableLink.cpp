@@ -20,6 +20,8 @@ static void onLinkStateChanged(bool isOnline) {
     // itself (called from both CableLink::loop() and, synchronously, the
     // public online() getter HTTP handlers use).
     cableLink.armHelloCheck();
+  } else {
+    cableLink.clearPftdInfo();
   }
 }
 
@@ -64,6 +66,7 @@ bool CableLink::requestTransmit(const String& localPath, const String& pofoPath,
     return false;
   }
 
+  busy_ = true;
   pendingDirection_ = Direction::TRANSMIT;
   pendingLocalPath_ = localPath;
   pendingPofoPath_ = pofoPath;
@@ -82,6 +85,7 @@ bool CableLink::requestReceive(const String& pofoPath, const String& localPath, 
     return false;
   }
 
+  busy_ = true;
   pendingDirection_ = Direction::RECEIVE;
   pendingPofoPath_ = pofoPath;
   pendingLocalPath_ = localPath;

@@ -4,7 +4,7 @@
 #include <LittleFS.h>
 #include <ElegantOTA.h>
 
-WebServer server(80);
+AsyncWebServer server(80);
 File fsUploadFile;
 
 String hex32(uint32_t value) {
@@ -50,6 +50,5 @@ void webApiBegin() {
 }
 
 void webApiLoop() {
-  server.handleClient();
   ElegantOTA.loop();
 }

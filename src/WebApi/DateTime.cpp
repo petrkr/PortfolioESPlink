@@ -81,14 +81,14 @@ String formatIsoDateTime(uint16_t dosDate, uint16_t dosTime) {
 
 // GET /datetimeAtari -> {datetime:"YYYY-MM-DDTHH:MM:SS"}. PFTD-only; 503 if
 // the link is down, 404 if PFTD hasn't confirmed presence.
-static void handleGetDatetimeAtari() {
+static void handleGetDatetimeAtari(AsyncWebServerRequest* request) {
   if (!cableLink.online()) {
-    server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
+    request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
   if (!cableLink.helloChecked() || !cableLink.pftdPresent()) {
-    server.send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
+    request->send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
     return;
   }
 
@@ -97,14 +97,14 @@ static void handleGetDatetimeAtari() {
   const PofoResult result = cableLink.portfolioLink.getDateTime(&dosDate, &dosTime);
   if (result != PofoResult::OK) {
     logger.warnf("GETDATETIME failed: %u", static_cast<unsigned>(result));
-    server.send(500, "application/json", "{\"ok\":false,\"message\":\"GETDATETIME failed\"}");
+    request->send(500, "application/json", "{\"ok\":false,\"message\":\"GETDATETIME failed\"}");
     return;
   }
 
   String out = "{\"ok\":true,\"datetime\":\"";
   out += formatIsoDateTime(dosDate, dosTime);
   out += "\"}";
-  server.send(200, "application/json", out);
+  request->send(200, "application/json", out);
 }
 
 // POST /datetimeAtari?datetime=YYYY-MM-DDTHH:MM:SS -> {ok,datetime} on
@@ -112,30 +112,30 @@ static void handleGetDatetimeAtari() {
 // link is down, 404 if PFTD hasn't confirmed presence, 409 if the
 // Portfolio rejected the request (errcode is the PFTD error code in that
 // case).
-static void handleSetDatetimeAtari() {
-  if (!server.hasArg("datetime")) {
-    server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
+static void handleSetDatetimeAtari(AsyncWebServerRequest* request) {
+  if (!request->hasArg("datetime")) {
+    request->send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
     return;
   }
 
   if (!cableLink.online()) {
-    server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
+    request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
   if (!cableLink.helloChecked() || !cableLink.pftdPresent()) {
-    server.send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
+    request->send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
     return;
   }
 
   uint16_t dosDate = 0;
   uint16_t dosTime = 0;
-  if (!parseIsoDateTime(server.arg("datetime"), &dosDate, &dosTime)) {
-    server.send(400, "application/json", "{\"ok\":false,\"message\":\"Invalid datetime\"}");
+  if (!parseIsoDateTime(request->arg("datetime"), &dosDate, &dosTime)) {
+    request->send(400, "application/json", "{\"ok\":false,\"message\":\"Invalid datetime\"}");
     return;
   }
 
-  logger.infof("setDatetimeAtari: %s", server.arg("datetime").c_str());
+  logger.infof("setDatetimeAtari: %s", request->arg("datetime").c_str());
 
   uint8_t errCode = 0;
   const PofoResult result = cableLink.portfolioLink.setDateTime(dosDate, dosTime, &errCode);
@@ -144,20 +144,20 @@ static void handleSetDatetimeAtari() {
     String out = "{\"ok\":false,\"message\":\"set datetime failed\",\"errcode\":";
     out += errCode;
     out += "}";
-    server.send(409, "application/json", out);
+    request->send(409, "application/json", out);
     return;
   }
 
   if (result != PofoResult::OK) {
     logger.warnf("SETDATETIME failed: %u", static_cast<unsigned>(result));
-    server.send(500, "application/json", "{\"ok\":false,\"message\":\"SETDATETIME failed\"}");
+    request->send(500, "application/json", "{\"ok\":false,\"message\":\"SETDATETIME failed\"}");
     return;
   }
 
   String out = "{\"ok\":true,\"datetime\":\"";
   out += formatIsoDateTime(dosDate, dosTime);
   out += "\"}";
-  server.send(200, "application/json", out);
+  request->send(200, "application/json", out);
 }
 
 void registerDateTimeRoutes() {

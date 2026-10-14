@@ -2,8 +2,8 @@
 
 #include "../FsUtil.h"
 
-static void handleListEsp32() {
-  String dir = server.hasArg("dir") ? server.arg("dir") : "/";
+static void handleListEsp32(AsyncWebServerRequest* request) {
+  String dir = request->hasArg("dir") ? request->arg("dir") : "/";
 
   // Web-facing paths are rooted at DATA_DIR, not the LittleFS root (which also
   // holds /web).
@@ -12,11 +12,11 @@ static void handleListEsp32() {
 
   String out;
   if (!listEspDirJson(fsDir, out)) {
-    server.send(404, "text/plain", "Directory not found");
+    request->send(404, "text/plain", "Directory not found");
     return;
   }
 
-  server.send(200, "application/json", out);
+  request->send(200, "application/json", out);
 }
 
 void registerEsp32FileRoutes() {

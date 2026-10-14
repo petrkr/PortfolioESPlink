@@ -11,27 +11,99 @@ static const uint32_t kTransferWaitTimeoutMs = 60000;
 
 static bool waitForTransferDone() {
   const uint32_t startedAt = millis();
-  do {
+  while (cableLink.busy()) {
     if (millis() - startedAt > kTransferWaitTimeoutMs) {
       logger.error("Transfer wait timed out");
       return false;
     }
-    cableLink.loop();
     delay(1);
-  } while (cableLink.busy());
+  }
   return true;
 }
 
-static void sendTransferResult(bool ok, const String& errorMessage) {
+static void sendTransferResult(AsyncWebServerRequest* request, bool ok, const String& errorMessage) {
   if (ok) {
-    server.send(200, "application/json", "{\"ok\":true}");
+    request->send(200, "application/json", "{\"ok\":true}");
     return;
   }
 
   String out = "{\"ok\":false,\"message\":\"";
   out += errorMessage;
   out += "\"}";
-  server.send(500, "application/json", out);
+  request->send(500, "application/json", out);
+}
+
+struct UploadTransferTaskArgs {
+  AsyncWebServerRequestPtr request;
+};
+
+static void uploadTransferTask(void* pvParameters) {
+  UploadTransferTaskArgs* args = static_cast<UploadTransferTaskArgs*>(pvParameters);
+  AsyncWebServerRequestPtr requestPtr = args->request;
+  delete args;
+
+  const bool done = waitForTransferDone();
+
+  if (auto request = requestPtr.lock()) {
+    sendTransferResult(request.get(), done && cableLink.lastError().isEmpty(), cableLink.lastError());
+  }
+  vTaskDelete(NULL);
+}
+
+static void startUploadTransferTask(AsyncWebServerRequest* request) {
+  UploadTransferTaskArgs* args = new UploadTransferTaskArgs{request->pause()};
+  xTaskCreate(uploadTransferTask, "uploadTx", 4096, args, 1, NULL);
+}
+
+struct DownloadTransferTaskArgs {
+  AsyncWebServerRequestPtr request;
+  String pofoPath;
+  String localPath;
+};
+
+static void downloadTransferTask(void* pvParameters) {
+  DownloadTransferTaskArgs* args = static_cast<DownloadTransferTaskArgs*>(pvParameters);
+  AsyncWebServerRequestPtr requestPtr = args->request;
+  const String pofoPath = args->pofoPath;
+  const String localPath = args->localPath;
+  delete args;
+
+  const bool done = waitForTransferDone();
+
+  auto request = requestPtr.lock();
+  if (!request) {
+    vTaskDelete(NULL);
+    return;
+  }
+
+  if (!done || !cableLink.lastError().isEmpty()) {
+    if (cableLink.lastResult() == PofoResult::REMOTE_ERROR) {
+      request->send(404, "application/json", "{\"ok\":false,\"message\":\"File not found\"}");
+    } else {
+      sendTransferResult(request.get(), false, cableLink.lastError());
+    }
+    vTaskDelete(NULL);
+    return;
+  }
+
+  File file = LittleFS.open(localPath, "r");
+  if (!file) {
+    sendTransferResult(request.get(), false, "Downloaded file missing on ESP32");
+    vTaskDelete(NULL);
+    return;
+  }
+  file.close();
+
+  AsyncWebServerResponse* response =
+      request->beginResponse(LittleFS, localPath, "application/octet-stream", /*download=*/true);
+  response->addHeader("Content-Disposition", "attachment; filename=\"" + pofoBasename(pofoPath) + "\"");
+  request->send(response);
+  vTaskDelete(NULL);
+}
+
+static void startDownloadTransferTask(AsyncWebServerRequest* request, const String& pofoPath, const String& localPath) {
+  DownloadTransferTaskArgs* args = new DownloadTransferTaskArgs{request->pause(), pofoPath, localPath};
+  xTaskCreate(downloadTransferTask, "downloadTx", 4096, args, 1, NULL);
 }
 
 static bool uploadToAtariRequested = false;
@@ -39,124 +111,103 @@ static String uploadLocalPath;
 static String uploadPofoPath;
 static bool uploadOverwrite = false;
 
-static void handleUpload() {
+static void handleUpload(AsyncWebServerRequest* request) {
   if (!uploadToAtariRequested) {
-    server.send(200, "application/json", "{\"ok\":true}");
+    request->send(200, "application/json", "{\"ok\":true}");
     return;
   }
   uploadToAtariRequested = false;
 
   if (!cableLink.online()) {
-    server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
+    request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
   if (!cableLink.requestTransmit(uploadLocalPath, uploadPofoPath, uploadOverwrite)) {
-    server.send(409, "application/json", "{\"ok\":false,\"message\":\"Transfer already in progress\"}");
+    request->send(409, "application/json", "{\"ok\":false,\"message\":\"Transfer already in progress\"}");
     return;
   }
 
-  const bool done = waitForTransferDone();
-  sendTransferResult(done && cableLink.lastError().isEmpty(), cableLink.lastError());
+  startUploadTransferTask(request);
 }
 
-static void handleUploadData() {
-  HTTPUpload& upload = server.upload();
+static void handleUploadData(AsyncWebServerRequest* request, const String& filename, size_t index, uint8_t* data,
+                              size_t len, bool final) {
+  if (index == 0) {
+    String path = String(DATA_DIR) + filename;
 
-  if (upload.status == UPLOAD_FILE_START) {
-    String filename = String(DATA_DIR) + upload.filename;
+    logger.infof("Upload start: %s", path.c_str());
+    fsUploadFile = LittleFS.open(path, "w");
+  }
 
-    logger.infof("Upload start: %s", filename.c_str());
-    fsUploadFile = LittleFS.open(filename, "w");
-  } else if (upload.status == UPLOAD_FILE_WRITE) {
-    if (fsUploadFile) {
-      fsUploadFile.write(upload.buf, upload.currentSize);
-    }
-  } else if (upload.status == UPLOAD_FILE_END) {
+  if (fsUploadFile) {
+    fsUploadFile.write(data, len);
+  }
+
+  if (final) {
     if (fsUploadFile) {
       fsUploadFile.close();
 
-      if (server.hasArg("toAtari")) {
-        uploadLocalPath = String(DATA_DIR) + upload.filename;
-        uploadOverwrite = server.hasArg("overwrite");
-        String destDir = server.hasArg("destDir") ? server.arg("destDir") : "C:\\";
-        uploadPofoPath = destDir + upload.filename;
+      if (request->hasArg("toAtari")) {
+        uploadLocalPath = String(DATA_DIR) + filename;
+        uploadOverwrite = request->hasArg("overwrite");
+        String destDir = request->hasArg("destDir") ? request->arg("destDir") : "C:\\";
+        uploadPofoPath = destDir + filename;
         uploadToAtariRequested = true;
       }
     }
   }
 }
 
-static void handleSendToAtari() {
-  if (!server.hasArg("path")) {
-    server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
+static void handleSendToAtari(AsyncWebServerRequest* request) {
+  if (!request->hasArg("path")) {
+    request->send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
     return;
   }
 
   if (!cableLink.online()) {
-    server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
+    request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
-  String localPath = String(DATA_DIR) + server.arg("path");
+  String localPath = String(DATA_DIR) + request->arg("path");
   localPath.replace("//", "/");
 
-  const bool overwrite = server.hasArg("overwrite");
-  const String destDir = server.hasArg("destDir") ? server.arg("destDir") : "C:\\";
+  const bool overwrite = request->hasArg("overwrite");
+  const String destDir = request->hasArg("destDir") ? request->arg("destDir") : "C:\\";
 
   int lastSlash = localPath.lastIndexOf('/');
   const String basename = lastSlash >= 0 ? localPath.substring(lastSlash + 1) : localPath;
   const String pofoPath = destDir + basename;
 
   if (!cableLink.requestTransmit(localPath, pofoPath, overwrite)) {
-    server.send(409, "application/json", "{\"ok\":false,\"message\":\"Transfer already in progress\"}");
+    request->send(409, "application/json", "{\"ok\":false,\"message\":\"Transfer already in progress\"}");
     return;
   }
 
-  const bool done = waitForTransferDone();
-  sendTransferResult(done && cableLink.lastError().isEmpty(), cableLink.lastError());
+  startUploadTransferTask(request);
 }
 
-static void handleDownloadFile() {
-  if (!server.hasArg("path")) {
-    server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
+static void handleDownloadFile(AsyncWebServerRequest* request) {
+  if (!request->hasArg("path")) {
+    request->send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
     return;
   }
 
   if (!cableLink.online()) {
-    server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
+    request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
-  const String pofoPath = server.arg("path");
+  const String pofoPath = request->arg("path");
   const String localPath = String(DATA_DIR) + pofoBasename(pofoPath);
 
   if (!cableLink.requestReceive(pofoPath, localPath, /*overwrite=*/true)) {
-    server.send(409, "application/json", "{\"ok\":false,\"message\":\"Transfer already in progress\"}");
+    request->send(409, "application/json", "{\"ok\":false,\"message\":\"Transfer already in progress\"}");
     return;
   }
 
-  const bool done = waitForTransferDone();
-  if (!done || !cableLink.lastError().isEmpty()) {
-    if (cableLink.lastResult() == PofoResult::REMOTE_ERROR) {
-      String out = "{\"ok\":false,\"message\":\"File not found\"}";
-      server.send(404, "application/json", out);
-    } else {
-      sendTransferResult(false, cableLink.lastError());
-    }
-    return;
-  }
-
-  File file = LittleFS.open(localPath, "r");
-  if (!file) {
-    sendTransferResult(false, "Downloaded file missing on ESP32");
-    return;
-  }
-
-  server.sendHeader("Content-Disposition",
-                     "attachment; filename=\"" + pofoBasename(pofoPath) + "\"");
-  server.streamFile(file, "application/octet-stream");
-  file.close();
+  startDownloadTransferTask(request, pofoPath, localPath);
 }
 
 void registerTransferRoutes() {

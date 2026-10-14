@@ -4,14 +4,14 @@
 
 // POST /ota/enable, POST /ota/disable -> toggles the ArduinoOTA (espota)
 // listener, which is otherwise never started.
-static void handleOtaEnable() {
+static void handleOtaEnable(AsyncWebServerRequest* request) {
   otaControlEnable();
-  server.send(200, "text/plain", "");
+  request->send(200, "text/plain", "");
 }
 
-static void handleOtaDisable() {
+static void handleOtaDisable(AsyncWebServerRequest* request) {
   otaControlDisable();
-  server.send(200, "text/plain", "");
+  request->send(200, "text/plain", "");
 }
 
 void registerOtaRoutes() {

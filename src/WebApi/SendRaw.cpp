@@ -30,43 +30,43 @@ String toHex(const uint8_t* data, size_t length) {
 // protocol-level debug/probing escape hatch. Works regardless of whether
 // PFTD is present - it's the caller's job to build a valid request; only
 // requires the link itself to be online.
-static void handleSendRaw() {
-  if (!server.hasArg("data")) {
-    server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
+static void handleSendRaw(AsyncWebServerRequest* request) {
+  if (!request->hasArg("data")) {
+    request->send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
     return;
   }
 
   if (!cableLink.online()) {
-    server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
+    request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
-  const String hex = server.arg("data");
+  const String hex = request->arg("data");
   if (hex.length() % 2 != 0) {
-    server.send(400, "application/json", "{\"ok\":false,\"message\":\"hex data must have even length\"}");
+    request->send(400, "application/json", "{\"ok\":false,\"message\":\"hex data must have even length\"}");
     return;
   }
 
   const size_t length = hex.length() / 2;
-  uint8_t* request = static_cast<uint8_t*>(malloc(length));
-  if (length > 0 && request == 0) {
-    server.send(500, "application/json", "{\"ok\":false,\"message\":\"OOM\"}");
+  uint8_t* requestBytes = static_cast<uint8_t*>(malloc(length));
+  if (length > 0 && requestBytes == 0) {
+    request->send(500, "application/json", "{\"ok\":false,\"message\":\"OOM\"}");
     return;
   }
   for (size_t i = 0; i < length; i++) {
-    request[i] = static_cast<uint8_t>(strtoul(hex.substring(i * 2, i * 2 + 2).c_str(), 0, 16));
+    requestBytes[i] = static_cast<uint8_t>(strtoul(hex.substring(i * 2, i * 2 + 2).c_str(), 0, 16));
   }
 
   logger.infof("sendRaw: %u bytes", static_cast<unsigned>(length));
 
   uint8_t* responsePayload = 0;
   size_t responseLength = 0;
-  const PofoResult result = cableLink.portfolioLink.sendRaw(request, length, &responsePayload, &responseLength);
-  free(request);
+  const PofoResult result = cableLink.portfolioLink.sendRaw(requestBytes, length, &responsePayload, &responseLength);
+  free(requestBytes);
 
   if (result != PofoResult::OK) {
     logger.warnf("sendRaw failed: %u", static_cast<unsigned>(result));
-    server.send(500, "application/json", "{\"ok\":false,\"message\":\"sendRaw failed\"}");
+    request->send(500, "application/json", "{\"ok\":false,\"message\":\"sendRaw failed\"}");
     return;
   }
 
@@ -75,7 +75,7 @@ static void handleSendRaw() {
   out += "\"}";
   PofoSmartCable::releaseBlock(responsePayload);
 
-  server.send(200, "application/json", out);
+  request->send(200, "application/json", out);
 }
 
 void registerSendRawRoutes() {

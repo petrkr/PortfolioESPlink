@@ -12,24 +12,24 @@ static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 // presence, 409 if the Portfolio rejected the request (errcode is the PFTD
 // error code in that case). Blocks for the whole copy duration, which can
 // be noticeably long for large files.
-static void handleCopyAtari() {
-  if (!server.hasArg("srcPath") || !server.hasArg("dstPath")) {
-    server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
+static void handleCopyAtari(AsyncWebServerRequest* request) {
+  if (!request->hasArg("srcPath") || !request->hasArg("dstPath")) {
+    request->send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
     return;
   }
 
   if (!cableLink.online()) {
-    server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
+    request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
   if (!cableLink.helloChecked() || !cableLink.pftdPresent()) {
-    server.send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
+    request->send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
     return;
   }
 
-  const String srcPath = server.arg("srcPath");
-  const String dstPath = server.arg("dstPath");
+  const String srcPath = request->arg("srcPath");
+  const String dstPath = request->arg("dstPath");
   logger.infof("copyAtari: %s -> %s", srcPath.c_str(), dstPath.c_str());
 
   uint8_t errCode = 0;
@@ -39,17 +39,17 @@ static void handleCopyAtari() {
     String out = "{\"ok\":false,\"message\":\"copy failed\",\"errcode\":";
     out += errCode;
     out += "}";
-    server.send(409, "application/json", out);
+    request->send(409, "application/json", out);
     return;
   }
 
   if (result != PofoResult::OK) {
     logger.warnf("COPY failed: %u", static_cast<unsigned>(result));
-    server.send(500, "application/json", "{\"ok\":false,\"message\":\"COPY failed\"}");
+    request->send(500, "application/json", "{\"ok\":false,\"message\":\"COPY failed\"}");
     return;
   }
 
-  server.send(200, "application/json", "{\"ok\":true,\"message\":\"Copied\"}");
+  request->send(200, "application/json", "{\"ok\":true,\"message\":\"Copied\"}");
 }
 
 void registerCopyRoutes() {

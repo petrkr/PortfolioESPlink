@@ -10,15 +10,15 @@ static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 // the only prefix handled for now; other drive letters (A:, C:, ...) will
 // route to the Atari side (same as /deleteAtari) once this becomes the
 // single delete endpoint for both.
-static void handleDeleteFile() {
-  if (!server.hasArg("path")) {
-    server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
+static void handleDeleteFile(AsyncWebServerRequest* request) {
+  if (!request->hasArg("path")) {
+    request->send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
     return;
   }
 
-  String path = server.arg("path");
+  String path = request->arg("path");
   if (!path.startsWith("ESP:\\")) {
-    server.send(400, "application/json", "{\"ok\":false,\"message\":\"Only ESP:\\\\ paths are supported\"}");
+    request->send(400, "application/json", "{\"ok\":false,\"message\":\"Only ESP:\\\\ paths are supported\"}");
     return;
   }
 
@@ -29,17 +29,17 @@ static void handleDeleteFile() {
   logger.infof("deleteFile: %s", localPath.c_str());
 
   if (!LittleFS.exists(localPath)) {
-    server.send(404, "application/json", "{\"ok\":false,\"message\":\"File not found\"}");
+    request->send(404, "application/json", "{\"ok\":false,\"message\":\"File not found\"}");
     return;
   }
 
   if (!LittleFS.remove(localPath)) {
     logger.warnf("deleteFile failed: %s", localPath.c_str());
-    server.send(500, "application/json", "{\"ok\":false,\"message\":\"Delete failed\"}");
+    request->send(500, "application/json", "{\"ok\":false,\"message\":\"Delete failed\"}");
     return;
   }
 
-  server.send(200, "application/json", "{\"ok\":true,\"message\":\"File deleted\"}");
+  request->send(200, "application/json", "{\"ok\":true,\"message\":\"File deleted\"}");
 }
 
 void registerDeleteFileRoutes() {
