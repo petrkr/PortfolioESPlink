@@ -159,7 +159,7 @@ static void handleDownloadFile() {
 }
 
 void registerTransferRoutes() {
-  server.on("/upload", HTTP_POST, handleUpload, handleUploadData);
+  server.on("/uploadFile", HTTP_POST, handleUpload, handleUploadData);
   server.on("/sendToAtari", HTTP_POST, handleSendToAtari);
   server.on("/downloadFile", HTTP_POST, handleDownloadFile);
 }

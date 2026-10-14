@@ -33,7 +33,7 @@
 //   POST /drawAsciiAtari?row=0-7&col=0-39&text=TEXT -> {ok,message}, PFTD-only (404 if not present,
 //                                                 409 if the Portfolio reported failure). Diagnostic/
 //                                                 debug tool - writes text to the Portfolio's own LCD.
-//   POST /upload?overwrite&toAtari&destDir=   -> {ok[,message]}, stores under DATA_DIR; if toAtari is set,
+//   POST /uploadFile?overwrite&toAtari&destDir= -> {ok[,message]}, stores under DATA_DIR; if toAtari is set,
 //                                                 blocks until the transfer to the Portfolio finishes
 //   POST /sendToAtari?path&overwrite&destDir= -> {ok[,message]}, path is DATA_DIR-relative; blocks until
 //                                                 the transfer finishes

@@ -631,7 +631,7 @@ async function uploadFile(file) {
   const query = params.toString() ? `?${params.toString()}` : "";
 
   const xhr = new XMLHttpRequest();
-  xhr.open("POST", `/upload${query}`);
+  xhr.open("POST", `/uploadFile${query}`);
   xhr.upload.onprogress = (event) => {
     if (event.lengthComputable) {
       espProgress.value = Math.round((event.loaded / event.total) * 100);
