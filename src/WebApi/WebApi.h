@@ -1,7 +1,8 @@
 #pragma once
 
 // Starts the HTTP server and registers the REST API used by data/web:
-//   GET  /status                              -> {status, connected, phase, done, total, error, otaEnabled, pftd}
+//   GET  /status                              -> {fwBuildId, status, connected, phase, done, total, error,
+//                                                 otaEnabled, espUsed, espTotal, pftd}
 //                                                 pftd is {buildId, version:{major,minor,patch}} or null -
 //                                                 whether PFTD (the Atari-side companion TSR) answered HELLO
 //                                                 after the link's last offline->online transition.

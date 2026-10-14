@@ -1,5 +1,6 @@
 #include "WebApiInternal.h"
 
+#include <LittleFS.h>
 #include <Version.h>
 
 #include "../CableLink.h"
@@ -18,6 +19,8 @@ static void handleStatus() {
   out += "\"total\":"; out += String(cableLink.totalBytes()); out += ",";
   out += "\"error\":\""; out += cableLink.lastError(); out += "\",";
   out += "\"otaEnabled\":"; out += (otaControlEnabled() ? "true" : "false"); out += ",";
+  out += "\"espUsed\":"; out += String(LittleFS.usedBytes()); out += ",";
+  out += "\"espTotal\":"; out += String(LittleFS.totalBytes()); out += ",";
 
   out += "\"pftd\":";
   if (cableLink.helloChecked() && cableLink.pftdPresent()) {
