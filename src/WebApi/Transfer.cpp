@@ -153,9 +153,10 @@ static void handleDownloadFile() {
     return;
   }
 
+  server.sendHeader("Content-Disposition",
+                     "attachment; filename=\"" + pofoBasename(pofoPath) + "\"");
   server.streamFile(file, "application/octet-stream");
   file.close();
-  LittleFS.remove(localPath);
 }
 
 void registerTransferRoutes() {

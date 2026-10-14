@@ -467,11 +467,11 @@ async function copySelectedToAtari() {
     for (const name of selectedEsp) {
       uploadStatus.textContent = `Sending ${name} to Atari...`;
       const response = await fetch(`/sendToAtari?path=${encodeURIComponent(name)}${overwrite}${destParam}`, { method: "POST" });
-      if (response.status !== 202) {
+      if (!response.ok) {
         uploadStatus.textContent = `${name}: ${await responseMessage(response)}`;
         break;
       }
-      await waitForIdle();
+      uploadStatus.textContent = `${name}: sent`;
     }
   } finally {
     toAtariBtn.disabled = false;
@@ -485,7 +485,6 @@ async function copySelectedFromAtari() {
     return;
   }
 
-  const overwrite = document.getElementById("overwrite").checked ? "&overwrite=1" : "";
   const dirPrefix = atariDirPrefix();
 
   fromAtariBtn.disabled = true;
@@ -493,12 +492,26 @@ async function copySelectedFromAtari() {
     for (const name of selectedAtari) {
       const fullPath = dirPrefix ? `${dirPrefix}${name}` : name;
       uploadStatus.textContent = `Downloading ${name} from Atari...`;
-      const response = await fetch(`/downloadFromAtari?path=${encodeURIComponent(fullPath)}${overwrite}`, { method: "POST" });
-      if (response.status !== 202) {
+      const response = await fetch(`/downloadFile?path=${encodeURIComponent(fullPath)}`, { method: "POST" });
+      if (!response.ok) {
         uploadStatus.textContent = `${name}: ${await responseMessage(response)}`;
         break;
       }
-      await waitForIdle();
+
+      // The file is saved under DATA_DIR on the ESP32 as a side effect of
+      // the download, regardless of what happens below - refreshESPFiles()
+      // in the finally block picks it up either way.
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+
+      uploadStatus.textContent = `${name}: downloaded`;
     }
   } finally {
     fromAtariBtn.disabled = false;

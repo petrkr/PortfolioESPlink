@@ -37,10 +37,13 @@
 //                                                 blocks until the transfer to the Portfolio finishes
 //   POST /sendToAtari?path&overwrite&destDir= -> {ok[,message]}, path is DATA_DIR-relative; blocks until
 //                                                 the transfer finishes
-//   POST /downloadFile?path=PATH              -> raw file bytes (application/octet-stream) on success,
-//                                                 or {ok:false,message} with a 4xx/5xx status on failure;
+//   POST /downloadFile?path=PATH              -> raw file bytes (application/octet-stream,
+//                                                 Content-Disposition: attachment) on success, or
+//                                                 {ok:false,message} with a 4xx/5xx status on failure;
 //                                                 path is the full Portfolio path; blocks until the
-//                                                 transfer finishes
+//                                                 transfer finishes. Saves under DATA_DIR along the way
+//                                                 and leaves it there (visible in /listESP32) regardless
+//                                                 of whether the browser's save dialog is accepted.
 //   POST /ota/enable, /ota/disable            -> starts/stops the ArduinoOTA (espota) listener
 //
 // Also serves the ElegantOTA firmware update portal at GET/POST /update.
