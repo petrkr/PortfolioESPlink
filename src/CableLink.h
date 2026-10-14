@@ -28,6 +28,8 @@ class CableLink {
   bool busy() const;
   const String& lastError() const { return lastError_; }
 
+  PofoResult lastResult() const { return lastResult_; }
+
   // Requests sending localPath (LittleFS) to pofoPath (Portfolio) once the
   // link is online. Returns false if a transfer is already pending/running.
   bool requestTransmit(const String& localPath, const String& pofoPath, bool overwrite);
@@ -85,6 +87,7 @@ class CableLink {
   bool pendingOverwrite_ = false;
   bool busy_ = false;
   String lastError_;
+  PofoResult lastResult_ = PofoResult::OK;
 
   size_t transferred_ = 0;
   size_t total_ = 0;

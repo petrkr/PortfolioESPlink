@@ -7,8 +7,57 @@
 
 static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 
+static const uint32_t kTransferWaitTimeoutMs = 60000;
+
+static bool waitForTransferDone() {
+  const uint32_t startedAt = millis();
+  do {
+    if (millis() - startedAt > kTransferWaitTimeoutMs) {
+      logger.error("Transfer wait timed out");
+      return false;
+    }
+    cableLink.loop();
+    delay(1);
+  } while (cableLink.busy());
+  return true;
+}
+
+static void sendTransferResult(bool ok, const String& errorMessage) {
+  if (ok) {
+    server.send(200, "application/json", "{\"ok\":true}");
+    return;
+  }
+
+  String out = "{\"ok\":false,\"message\":\"";
+  out += errorMessage;
+  out += "\"}";
+  server.send(500, "application/json", out);
+}
+
+static bool uploadToAtariRequested = false;
+static String uploadLocalPath;
+static String uploadPofoPath;
+static bool uploadOverwrite = false;
+
 static void handleUpload() {
-  server.send(202, "text/plain", "");
+  if (!uploadToAtariRequested) {
+    server.send(200, "application/json", "{\"ok\":true}");
+    return;
+  }
+  uploadToAtariRequested = false;
+
+  if (!cableLink.online()) {
+    server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
+    return;
+  }
+
+  if (!cableLink.requestTransmit(uploadLocalPath, uploadPofoPath, uploadOverwrite)) {
+    server.send(409, "application/json", "{\"ok\":false,\"message\":\"Transfer already in progress\"}");
+    return;
+  }
+
+  const bool done = waitForTransferDone();
+  sendTransferResult(done && cableLink.lastError().isEmpty(), cableLink.lastError());
 }
 
 static void handleUploadData() {
@@ -28,30 +77,24 @@ static void handleUploadData() {
       fsUploadFile.close();
 
       if (server.hasArg("toAtari")) {
-        String filename = String(DATA_DIR) + upload.filename;
-        const bool overwrite = server.hasArg("overwrite");
+        uploadLocalPath = String(DATA_DIR) + upload.filename;
+        uploadOverwrite = server.hasArg("overwrite");
         String destDir = server.hasArg("destDir") ? server.arg("destDir") : "C:\\";
-        const String pofoPath = destDir + upload.filename;
-
-        if (cableLink.requestTransmit(filename, pofoPath, overwrite)) {
-          logger.infof("File %s queued for transfer to %s", filename.c_str(), pofoPath.c_str());
-        } else {
-          logger.warn("Transfer already in progress");
-        }
+        uploadPofoPath = destDir + upload.filename;
+        uploadToAtariRequested = true;
       }
     }
   }
 }
 
-// POST /sendToAtari?path=<ESP32 /data-relative path>&overwrite=1&destDir=<Portfolio dir prefix>
 static void handleSendToAtari() {
   if (!server.hasArg("path")) {
-    server.send(400, "text/plain", "BAD ARGS");
+    server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
     return;
   }
 
   if (!cableLink.online()) {
-    server.send(503, "text/plain", "Portfolio not connected");
+    server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
@@ -66,39 +109,57 @@ static void handleSendToAtari() {
   const String pofoPath = destDir + basename;
 
   if (!cableLink.requestTransmit(localPath, pofoPath, overwrite)) {
-    server.send(409, "text/plain", "Transfer already in progress");
+    server.send(409, "application/json", "{\"ok\":false,\"message\":\"Transfer already in progress\"}");
     return;
   }
 
-  server.send(202, "text/plain", "");
+  const bool done = waitForTransferDone();
+  sendTransferResult(done && cableLink.lastError().isEmpty(), cableLink.lastError());
 }
 
-// POST /downloadFromAtari?path=<Portfolio full path>&overwrite=1
-static void handleDownloadFromAtari() {
+static void handleDownloadFile() {
   if (!server.hasArg("path")) {
-    server.send(400, "text/plain", "BAD ARGS");
+    server.send(400, "application/json", "{\"ok\":false,\"message\":\"BAD ARGS\"}");
     return;
   }
 
   if (!cableLink.online()) {
-    server.send(503, "text/plain", "Portfolio not connected");
+    server.send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
   const String pofoPath = server.arg("path");
-  const bool overwrite = server.hasArg("overwrite");
   const String localPath = String(DATA_DIR) + pofoBasename(pofoPath);
 
-  if (!cableLink.requestReceive(pofoPath, localPath, overwrite)) {
-    server.send(409, "text/plain", "Transfer already in progress, or file exists");
+  if (!cableLink.requestReceive(pofoPath, localPath, /*overwrite=*/true)) {
+    server.send(409, "application/json", "{\"ok\":false,\"message\":\"Transfer already in progress\"}");
     return;
   }
 
-  server.send(202, "text/plain", "");
+  const bool done = waitForTransferDone();
+  if (!done || !cableLink.lastError().isEmpty()) {
+    if (cableLink.lastResult() == PofoResult::REMOTE_ERROR) {
+      String out = "{\"ok\":false,\"message\":\"File not found\"}";
+      server.send(404, "application/json", out);
+    } else {
+      sendTransferResult(false, cableLink.lastError());
+    }
+    return;
+  }
+
+  File file = LittleFS.open(localPath, "r");
+  if (!file) {
+    sendTransferResult(false, "Downloaded file missing on ESP32");
+    return;
+  }
+
+  server.streamFile(file, "application/octet-stream");
+  file.close();
+  LittleFS.remove(localPath);
 }
 
 void registerTransferRoutes() {
   server.on("/upload", HTTP_POST, handleUpload, handleUploadData);
   server.on("/sendToAtari", HTTP_POST, handleSendToAtari);
-  server.on("/downloadFromAtari", HTTP_POST, handleDownloadFromAtari);
+  server.on("/downloadFile", HTTP_POST, handleDownloadFile);
 }

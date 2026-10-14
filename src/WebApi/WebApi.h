@@ -33,9 +33,14 @@
 //   POST /drawAsciiAtari?row=0-7&col=0-39&text=TEXT -> {ok,message}, PFTD-only (404 if not present,
 //                                                 409 if the Portfolio reported failure). Diagnostic/
 //                                                 debug tool - writes text to the Portfolio's own LCD.
-//   POST /upload?overwrite&toAtari&destDir=   -> 202, stores under DATA_DIR, optionally also sends to Portfolio
-//   POST /sendToAtari?path&overwrite&destDir= -> 202 once started, path is DATA_DIR-relative
-//   POST /downloadFromAtari?path&overwrite    -> 202 once started, path is the full Portfolio path
+//   POST /upload?overwrite&toAtari&destDir=   -> {ok[,message]}, stores under DATA_DIR; if toAtari is set,
+//                                                 blocks until the transfer to the Portfolio finishes
+//   POST /sendToAtari?path&overwrite&destDir= -> {ok[,message]}, path is DATA_DIR-relative; blocks until
+//                                                 the transfer finishes
+//   POST /downloadFile?path=PATH              -> raw file bytes (application/octet-stream) on success,
+//                                                 or {ok:false,message} with a 4xx/5xx status on failure;
+//                                                 path is the full Portfolio path; blocks until the
+//                                                 transfer finishes
 //   POST /ota/enable, /ota/disable            -> starts/stops the ArduinoOTA (espota) listener
 //
 // Also serves the ElegantOTA firmware update portal at GET/POST /update.

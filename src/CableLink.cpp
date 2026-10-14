@@ -69,6 +69,7 @@ bool CableLink::requestTransmit(const String& localPath, const String& pofoPath,
   pendingPofoPath_ = pofoPath;
   pendingOverwrite_ = overwrite;
   lastError_ = "";
+  lastResult_ = PofoResult::OK;
   return true;
 }
 
@@ -86,6 +87,7 @@ bool CableLink::requestReceive(const String& pofoPath, const String& localPath, 
   pendingLocalPath_ = localPath;
   pendingOverwrite_ = overwrite;
   lastError_ = "";
+  lastResult_ = PofoResult::OK;
   return true;
 }
 
@@ -124,6 +126,7 @@ void CableLink::processPending() {
     File file = LittleFS.open(pendingLocalPath_, "r");
     if (!file) {
       lastError_ = "Cannot open local file";
+      lastResult_ = PofoResult::INVALID_ARGUMENT;
       logger.warnf("Cannot open queued file: %s", pendingLocalPath_.c_str());
       pendingDirection_ = Direction::NONE;
       busy_ = false;
@@ -141,6 +144,7 @@ void CableLink::processPending() {
     File file = LittleFS.open(pendingLocalPath_, "w");
     if (!file) {
       lastError_ = "Cannot create local file";
+      lastResult_ = PofoResult::INVALID_ARGUMENT;
       logger.warnf("Cannot create local file: %s", pendingLocalPath_.c_str());
       pendingDirection_ = Direction::NONE;
       busy_ = false;
@@ -153,6 +157,7 @@ void CableLink::processPending() {
     file.close();
   }
 
+  lastResult_ = result;
   if (result != PofoResult::OK) {
     lastError_ = "Transfer failed (" + String(static_cast<unsigned>(result)) + ")";
     logger.warnf("Transfer failed: %u", static_cast<unsigned>(result));
