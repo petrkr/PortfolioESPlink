@@ -440,7 +440,8 @@ async function deleteESPFile(name) {
   if (!confirm(`Delete ${name} from ESP32?`)) {
     return;
   }
-  const response = await fetch(`/deleteESP32?path=${encodeURIComponent(name)}`, { method: "POST" });
+  const espPath = `ESP:${name.replace(/\//g, "\\")}`;
+  const response = await fetch(`/deleteFile?path=${encodeURIComponent(espPath)}`, { method: "POST" });
   if (!response.ok) {
     uploadStatus.textContent = await responseMessage(response);
   }

@@ -17,6 +17,10 @@
 //                                                 409 if the Portfolio rejected the request)
 //   POST /deleteAtari?path=PATH               -> {ok,message[,errcode]}, PFTD-only (404 if not present,
 //                                                 409 if the Portfolio rejected the request)
+//   POST /deleteFile?path=PATH                -> {ok,message}, file only. PATH must start with "ESP:\" for
+//                                                 now (mapped to DATA_DIR); other drive letters (A:, C:, ...)
+//                                                 will route to the Atari side once this replaces
+//                                                 /deleteAtari as the single delete endpoint for both.
 //   POST /renameAtari?oldPath=PATH&newPath=PATH -> {ok,message[,errcode]}, PFTD-only (404 if not present,
 //                                                 409 if the Portfolio rejected the request). No frontend
 //                                                 wiring yet - index.htm's rename button is disabled.

@@ -36,6 +36,7 @@ void webApiBegin() {
   registerMkdirRoutes();
   registerRmdirRoutes();
   registerDeleteRoutes();
+  registerDeleteFileRoutes();
   registerRenameRoutes();
   registerCopyRoutes();
   registerDateTimeRoutes();

@@ -27,6 +27,7 @@ void registerOtaRoutes();
 void registerMkdirRoutes();
 void registerRmdirRoutes();
 void registerDeleteRoutes();
+void registerDeleteFileRoutes();
 void registerRenameRoutes();
 void registerCopyRoutes();
 void registerDateTimeRoutes();
