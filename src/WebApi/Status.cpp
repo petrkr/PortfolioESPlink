@@ -1,5 +1,7 @@
 #include "WebApiInternal.h"
 
+#include <Version.h>
+
 #include "../CableLink.h"
 #include "../OtaControl.h"
 
@@ -8,6 +10,7 @@ static void handleStatus() {
   const bool busy = cableLink.busy();
 
   String out = "{";
+  out += "\"fwBuildId\":\""; out += hex32(FW_BUILD_ID); out += "\",";
   out += "\"status\":\""; out += (busy ? "busy" : "idle"); out += "\",";
   out += "\"connected\":"; out += (connected ? "true" : "false"); out += ",";
   out += "\"phase\":\""; out += (busy ? "pofo_upload" : "idle"); out += "\",";
