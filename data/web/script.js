@@ -652,7 +652,7 @@ async function uploadFile(file) {
     }
   };
   xhr.onload = () => {
-    uploadStatus.textContent = xhr.status === 202 ? "Queued for Portfolio" : xhrResponseMessage(xhr);
+    uploadStatus.textContent = xhr.status >= 200 && xhr.status < 300 ? "Done" : xhrResponseMessage(xhr);
     refreshESPFiles();
     refreshStatus();
   };
