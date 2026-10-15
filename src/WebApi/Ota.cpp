@@ -6,12 +6,12 @@
 // listener, which is otherwise never started.
 static void handleOtaEnable(AsyncWebServerRequest* request) {
   otaControlEnable();
-  request->send(200, "text/plain", "");
+  request->send(200, "application/json", "{\"ok\":true}");
 }
 
 static void handleOtaDisable(AsyncWebServerRequest* request) {
   otaControlDisable();
-  request->send(200, "text/plain", "");
+  request->send(200, "application/json", "{\"ok\":true}");
 }
 
 void registerOtaRoutes() {

@@ -12,7 +12,7 @@ static void handleListEsp32(AsyncWebServerRequest* request) {
 
   String out;
   if (!listEspDirJson(fsDir, out)) {
-    request->send(404, "text/plain", "Directory not found");
+    request->send(404, "application/json", "{\"ok\":false,\"message\":\"Directory not found\"}");
     return;
   }
 
