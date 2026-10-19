@@ -2,7 +2,7 @@
 
 #include <log4mcu.h>
 
-#include "../CableLink.h"
+#include "../ClientMode.h"
 
 static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 
@@ -12,7 +12,7 @@ static void handleListAtari(AsyncWebServerRequest* request) {
     return;
   }
 
-  if (!cableLink.online()) {
+  if (!clientMode.online()) {
     request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
@@ -21,7 +21,7 @@ static void handleListAtari(AsyncWebServerRequest* request) {
   logger.infof("listAtari: %s", path.c_str());
 
   PofoFileTransferList response;
-  const PofoResult result = cableLink.portfolioLink.list(path.c_str(), &response);
+  const PofoResult result = clientMode.portfolioLink.list(path.c_str(), &response);
   if (result != PofoResult::OK) {
     logger.warnf("LIST failed: %u", static_cast<unsigned>(result));
     request->send(500, "application/json", "{\"ok\":false,\"message\":\"LIST failed\"}");
@@ -51,12 +51,12 @@ static void handleListAtariExt(AsyncWebServerRequest* request) {
     return;
   }
 
-  if (!cableLink.online()) {
+  if (!clientMode.online()) {
     request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
-  if (!cableLink.helloChecked() || !cableLink.pftdPresent()) {
+  if (!clientMode.helloChecked() || !clientMode.pftdPresent()) {
     request->send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
     return;
   }
@@ -65,7 +65,7 @@ static void handleListAtariExt(AsyncWebServerRequest* request) {
   logger.infof("listAtariExt: %s", path.c_str());
 
   PortfolioLinkListExt response;
-  const PofoResult result = cableLink.portfolioLink.listExt(path.c_str(), &response);
+  const PofoResult result = clientMode.portfolioLink.listExt(path.c_str(), &response);
   if (result != PofoResult::OK) {
     logger.warnf("LIST_EXT failed: %u", static_cast<unsigned>(result));
     request->send(500, "application/json", "{\"ok\":false,\"message\":\"LIST_EXT failed\"}");
@@ -95,18 +95,18 @@ static void handleListAtariExt(AsyncWebServerRequest* request) {
 // GET /drives -> {drives:["A","B",...]}. PFTD-only (see PortfolioLink::drives());
 // 503 if the link is down, 404 if PFTD hasn't confirmed presence.
 static void handleDrives(AsyncWebServerRequest* request) {
-  if (!cableLink.online()) {
+  if (!clientMode.online()) {
     request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
-  if (!cableLink.helloChecked() || !cableLink.pftdPresent()) {
+  if (!clientMode.helloChecked() || !clientMode.pftdPresent()) {
     request->send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
     return;
   }
 
   uint8_t driveCount = 0;
-  const PofoResult result = cableLink.portfolioLink.drives(&driveCount);
+  const PofoResult result = clientMode.portfolioLink.drives(&driveCount);
   if (result != PofoResult::OK) {
     logger.warnf("DRIVES failed: %u", static_cast<unsigned>(result));
     request->send(500, "application/json", "{\"ok\":false,\"message\":\"DRIVES failed\"}");

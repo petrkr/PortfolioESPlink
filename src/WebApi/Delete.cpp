@@ -2,7 +2,7 @@
 
 #include <log4mcu.h>
 
-#include "../CableLink.h"
+#include "../ClientMode.h"
 
 static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 
@@ -16,12 +16,12 @@ static void handleDeleteAtari(AsyncWebServerRequest* request) {
     return;
   }
 
-  if (!cableLink.online()) {
+  if (!clientMode.online()) {
     request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
-  if (!cableLink.helloChecked() || !cableLink.pftdPresent()) {
+  if (!clientMode.helloChecked() || !clientMode.pftdPresent()) {
     request->send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
     return;
   }
@@ -30,7 +30,7 @@ static void handleDeleteAtari(AsyncWebServerRequest* request) {
   logger.infof("deleteAtari: %s", path.c_str());
 
   uint8_t errCode = 0;
-  const PofoResult result = cableLink.portfolioLink.deleteFile(path.c_str(), &errCode);
+  const PofoResult result = clientMode.portfolioLink.deleteFile(path.c_str(), &errCode);
 
   if (result == PofoResult::REMOTE_ERROR) {
     String out = "{\"ok\":false,\"message\":\"delete failed\",\"errcode\":";

@@ -2,7 +2,7 @@
 
 #include <log4mcu.h>
 
-#include "../CableLink.h"
+#include "../ClientMode.h"
 
 static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 
@@ -82,19 +82,19 @@ String formatIsoDateTime(uint16_t dosDate, uint16_t dosTime) {
 // GET /datetimeAtari -> {datetime:"YYYY-MM-DDTHH:MM:SS"}. PFTD-only; 503 if
 // the link is down, 404 if PFTD hasn't confirmed presence.
 static void handleGetDatetimeAtari(AsyncWebServerRequest* request) {
-  if (!cableLink.online()) {
+  if (!clientMode.online()) {
     request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
-  if (!cableLink.helloChecked() || !cableLink.pftdPresent()) {
+  if (!clientMode.helloChecked() || !clientMode.pftdPresent()) {
     request->send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
     return;
   }
 
   uint16_t dosDate = 0;
   uint16_t dosTime = 0;
-  const PofoResult result = cableLink.portfolioLink.getDateTime(&dosDate, &dosTime);
+  const PofoResult result = clientMode.portfolioLink.getDateTime(&dosDate, &dosTime);
   if (result != PofoResult::OK) {
     logger.warnf("GETDATETIME failed: %u", static_cast<unsigned>(result));
     request->send(500, "application/json", "{\"ok\":false,\"message\":\"GETDATETIME failed\"}");
@@ -118,12 +118,12 @@ static void handleSetDatetimeAtari(AsyncWebServerRequest* request) {
     return;
   }
 
-  if (!cableLink.online()) {
+  if (!clientMode.online()) {
     request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
-  if (!cableLink.helloChecked() || !cableLink.pftdPresent()) {
+  if (!clientMode.helloChecked() || !clientMode.pftdPresent()) {
     request->send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
     return;
   }
@@ -138,7 +138,7 @@ static void handleSetDatetimeAtari(AsyncWebServerRequest* request) {
   logger.infof("setDatetimeAtari: %s", request->arg("datetime").c_str());
 
   uint8_t errCode = 0;
-  const PofoResult result = cableLink.portfolioLink.setDateTime(dosDate, dosTime, &errCode);
+  const PofoResult result = clientMode.portfolioLink.setDateTime(dosDate, dosTime, &errCode);
 
   if (result == PofoResult::REMOTE_ERROR) {
     String out = "{\"ok\":false,\"message\":\"set datetime failed\",\"errcode\":";

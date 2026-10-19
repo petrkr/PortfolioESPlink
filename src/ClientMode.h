@@ -12,7 +12,7 @@
 // once the link is online; HTTP handlers only call requestTransmit()/
 // requestReceive() and return immediately, polling busy()/lastError() via
 // /status to report progress.
-class CableLink {
+class ClientMode {
  private:
   // Declared first (even though private) so it's initialized before the
   // public portfolioLink member below, which holds a reference to it -
@@ -40,12 +40,12 @@ class CableLink {
   bool requestReceive(const String& pofoPath, const String& localPath, bool overwrite);
 
   // Direct access for synchronous, non-cached PFTD/ROM commands (list(),
-  // drives(), listExt(), ...) that don't need CableLink's async transfer
+  // drives(), listExt(), ...) that don't need ClientMode's async transfer
   // queue or HELLO caching - callers run these straight from an HTTP
-  // handler, e.g. cableLink.portfolioLink.list(...). Must only be used
+  // handler, e.g. clientMode.portfolioLink.list(...). Must only be used
   // while online() - PortfolioLink itself doesn't track link state. Public
-  // data member (not a getter) so const-ness follows cableLink's own:
-  // a const CableLink gives const access, same as any other member.
+  // data member (not a getter) so const-ness follows clientMode's own:
+  // a const ClientMode gives const access, same as any other member.
   PortfolioLink portfolioLink{cable_};
 
   // Whether PFTD answered HELLO after the link's last offline->online
@@ -107,4 +107,4 @@ class CableLink {
   PortfolioLinkHello pftdInfo_;
 };
 
-extern CableLink cableLink;
+extern ClientMode clientMode;

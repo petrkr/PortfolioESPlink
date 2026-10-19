@@ -4,7 +4,7 @@
 
 #include <PofoSmartCable.h>
 
-#include "../CableLink.h"
+#include "../ClientMode.h"
 
 static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 
@@ -36,7 +36,7 @@ static void handleSendRaw(AsyncWebServerRequest* request) {
     return;
   }
 
-  if (!cableLink.online()) {
+  if (!clientMode.online()) {
     request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
@@ -61,7 +61,7 @@ static void handleSendRaw(AsyncWebServerRequest* request) {
 
   uint8_t* responsePayload = 0;
   size_t responseLength = 0;
-  const PofoResult result = cableLink.portfolioLink.sendRaw(requestBytes, length, &responsePayload, &responseLength);
+  const PofoResult result = clientMode.portfolioLink.sendRaw(requestBytes, length, &responsePayload, &responseLength);
   free(requestBytes);
 
   if (result != PofoResult::OK) {

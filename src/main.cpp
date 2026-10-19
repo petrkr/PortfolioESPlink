@@ -7,7 +7,7 @@
   0.1 First release, only list folder and cat(type) files to Serial, protocol based on Transfolio v1.0.1 (2019-05-26)
   0.2 Format SPIFF if it does not work, fix setupPort
   0.3 Rewritten on top of the PofoSmartCable library
-  0.4 Split into CableLink/WebApi/FsUtil modules, REST API for data/web
+  0.4 Split into ClientMode/WebApi/FsUtil modules, REST API for data/web
 
   See WebApi.h for the REST API served to data/web.
 */
@@ -18,7 +18,7 @@
 #include <log4mcu.h>
 #include <secrets.h>
 
-#include "CableLink.h"
+#include "ClientMode.h"
 #include "WebApi/WebApi.h"
 #include "OtaControl.h"
 #include "ServerModeButton.h"
@@ -76,7 +76,7 @@ void setup() {
   otaControlEnable();
 #endif
 
-  if (!cableLink.begin(CABLE_CLK_IN, CABLE_DATA_IN, CABLE_CLK_OUT, CABLE_DATA_OUT)) {
+  if (!clientMode.begin(CABLE_CLK_IN, CABLE_DATA_IN, CABLE_CLK_OUT, CABLE_DATA_OUT)) {
     logger.error("PofoSmartCable begin failed");
     return;
   }
@@ -86,7 +86,7 @@ void setup() {
 
 void loop() {
   webApiLoop();
-  cableLink.loop();
+  clientMode.loop();
   otaControlLoop();
   serverModeButton.loop();
 }

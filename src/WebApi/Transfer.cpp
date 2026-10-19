@@ -3,7 +3,7 @@
 #include <LittleFS.h>
 #include <log4mcu.h>
 
-#include "../CableLink.h"
+#include "../ClientMode.h"
 
 static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 
@@ -11,7 +11,7 @@ static const uint32_t kTransferWaitTimeoutMs = 60000;
 
 static bool waitForTransferDone() {
   const uint32_t startedAt = millis();
-  while (cableLink.busy()) {
+  while (clientMode.busy()) {
     if (millis() - startedAt > kTransferWaitTimeoutMs) {
       logger.error("Transfer wait timed out");
       return false;
@@ -45,7 +45,7 @@ static void uploadTransferTask(void* pvParameters) {
   const bool done = waitForTransferDone();
 
   if (auto request = requestPtr.lock()) {
-    sendTransferResult(request.get(), done && cableLink.lastError().isEmpty(), cableLink.lastError());
+    sendTransferResult(request.get(), done && clientMode.lastError().isEmpty(), clientMode.lastError());
   }
   vTaskDelete(NULL);
 }
@@ -76,11 +76,11 @@ static void downloadTransferTask(void* pvParameters) {
     return;
   }
 
-  if (!done || !cableLink.lastError().isEmpty()) {
-    if (cableLink.lastResult() == PofoResult::REMOTE_ERROR) {
+  if (!done || !clientMode.lastError().isEmpty()) {
+    if (clientMode.lastResult() == PofoResult::REMOTE_ERROR) {
       request->send(404, "application/json", "{\"ok\":false,\"message\":\"File not found\"}");
     } else {
-      sendTransferResult(request.get(), false, cableLink.lastError());
+      sendTransferResult(request.get(), false, clientMode.lastError());
     }
     vTaskDelete(NULL);
     return;
@@ -118,12 +118,12 @@ static void handleUpload(AsyncWebServerRequest* request) {
   }
   uploadToAtariRequested = false;
 
-  if (!cableLink.online()) {
+  if (!clientMode.online()) {
     request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
-  if (!cableLink.requestTransmit(uploadLocalPath, uploadPofoPath, uploadOverwrite)) {
+  if (!clientMode.requestTransmit(uploadLocalPath, uploadPofoPath, uploadOverwrite)) {
     request->send(409, "application/json", "{\"ok\":false,\"message\":\"Transfer already in progress\"}");
     return;
   }
@@ -165,7 +165,7 @@ static void handleSendToAtari(AsyncWebServerRequest* request) {
     return;
   }
 
-  if (!cableLink.online()) {
+  if (!clientMode.online()) {
     request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
@@ -180,7 +180,7 @@ static void handleSendToAtari(AsyncWebServerRequest* request) {
   const String basename = lastSlash >= 0 ? localPath.substring(lastSlash + 1) : localPath;
   const String pofoPath = destDir + basename;
 
-  if (!cableLink.requestTransmit(localPath, pofoPath, overwrite)) {
+  if (!clientMode.requestTransmit(localPath, pofoPath, overwrite)) {
     request->send(409, "application/json", "{\"ok\":false,\"message\":\"Transfer already in progress\"}");
     return;
   }
@@ -194,7 +194,7 @@ static void handleDownloadFile(AsyncWebServerRequest* request) {
     return;
   }
 
-  if (!cableLink.online()) {
+  if (!clientMode.online()) {
     request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
@@ -202,7 +202,7 @@ static void handleDownloadFile(AsyncWebServerRequest* request) {
   const String pofoPath = request->arg("path");
   const String localPath = String(DATA_DIR) + pofoBasename(pofoPath);
 
-  if (!cableLink.requestReceive(pofoPath, localPath, /*overwrite=*/true)) {
+  if (!clientMode.requestReceive(pofoPath, localPath, /*overwrite=*/true)) {
     request->send(409, "application/json", "{\"ok\":false,\"message\":\"Transfer already in progress\"}");
     return;
   }

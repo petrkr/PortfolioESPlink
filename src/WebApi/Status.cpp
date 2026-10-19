@@ -3,28 +3,28 @@
 #include <LittleFS.h>
 #include <Version.h>
 
-#include "../CableLink.h"
+#include "../ClientMode.h"
 #include "../OtaControl.h"
 
 static void handleStatusAsync(AsyncWebServerRequest* request) {
-  const bool connected = cableLink.online();
-  const bool busy = cableLink.busy();
+  const bool connected = clientMode.online();
+  const bool busy = clientMode.busy();
 
   String out = "{";
   out += "\"fwBuildId\":\""; out += hex32(FW_BUILD_ID); out += "\",";
   out += "\"status\":\""; out += (busy ? "busy" : "idle"); out += "\",";
   out += "\"connected\":"; out += (connected ? "true" : "false"); out += ",";
   out += "\"phase\":\""; out += (busy ? "pofo_upload" : "idle"); out += "\",";
-  out += "\"done\":"; out += String(cableLink.transferredBytes()); out += ",";
-  out += "\"total\":"; out += String(cableLink.totalBytes()); out += ",";
-  out += "\"error\":\""; out += cableLink.lastError(); out += "\",";
+  out += "\"done\":"; out += String(clientMode.transferredBytes()); out += ",";
+  out += "\"total\":"; out += String(clientMode.totalBytes()); out += ",";
+  out += "\"error\":\""; out += clientMode.lastError(); out += "\",";
   out += "\"otaEnabled\":"; out += (otaControlEnabled() ? "true" : "false"); out += ",";
   out += "\"espUsed\":"; out += String(LittleFS.usedBytes()); out += ",";
   out += "\"espTotal\":"; out += String(LittleFS.totalBytes()); out += ",";
 
   out += "\"pftd\":";
-  if (cableLink.helloChecked() && cableLink.pftdPresent()) {
-    const PortfolioLinkHello& info = cableLink.pftdInfo();
+  if (clientMode.helloChecked() && clientMode.pftdPresent()) {
+    const PortfolioLinkHello& info = clientMode.pftdInfo();
     out += "{\"buildId\":\""; out += hex32(info.buildId); out += "\",";
     out += "\"version\":{";
     out += "\"major\":"; out += String(info.versionMajor); out += ",";

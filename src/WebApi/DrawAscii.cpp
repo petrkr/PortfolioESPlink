@@ -2,7 +2,7 @@
 
 #include <log4mcu.h>
 
-#include "../CableLink.h"
+#include "../ClientMode.h"
 
 static log4mcu::Logger& logger = log4mcu::Logger::get("WebApi");
 
@@ -17,12 +17,12 @@ static void handleDrawAsciiAtari(AsyncWebServerRequest* request) {
     return;
   }
 
-  if (!cableLink.online()) {
+  if (!clientMode.online()) {
     request->send(503, "application/json", "{\"ok\":false,\"message\":\"Portfolio not connected\"}");
     return;
   }
 
-  if (!cableLink.helloChecked() || !cableLink.pftdPresent()) {
+  if (!clientMode.helloChecked() || !clientMode.pftdPresent()) {
     request->send(404, "application/json", "{\"ok\":false,\"message\":\"PFTD not present\"}");
     return;
   }
@@ -32,7 +32,7 @@ static void handleDrawAsciiAtari(AsyncWebServerRequest* request) {
   const String text = request->arg("text");
   logger.infof("drawAsciiAtari: row=%u col=%u text=%s", row, col, text.c_str());
 
-  const PofoResult result = cableLink.portfolioLink.drawAscii(row, col, text.c_str());
+  const PofoResult result = clientMode.portfolioLink.drawAscii(row, col, text.c_str());
 
   if (result == PofoResult::REMOTE_ERROR) {
     request->send(409, "application/json", "{\"ok\":false,\"message\":\"draw ascii failed\"}");

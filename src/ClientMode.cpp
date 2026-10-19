@@ -1,13 +1,13 @@
-#include "CableLink.h"
+#include "ClientMode.h"
 
 #include <LittleFS.h>
 #include <log4mcu.h>
 
 #include <board_config.h>
 
-CableLink cableLink;
+ClientMode clientMode;
 
-static log4mcu::Logger& logger = log4mcu::Logger::get("CableLink");
+static log4mcu::Logger& logger = log4mcu::Logger::get("ClientMode");
 
 static void onLinkStateChanged(bool isOnline) {
   logger.infof("Link %s", isOnline ? "online" : "offline");
@@ -17,11 +17,11 @@ static void onLinkStateChanged(bool isOnline) {
   if (isOnline) {
     // Deferred to loop() (see processHello()) - a blocking cable call must
     // never run from inside this callback, which fires from online()
-    // itself (called from both CableLink::loop() and, synchronously, the
+    // itself (called from both ClientMode::loop() and, synchronously, the
     // public online() getter HTTP handlers use).
-    cableLink.armHelloCheck();
+    clientMode.armHelloCheck();
   } else {
-    cableLink.clearPftdInfo();
+    clientMode.clearPftdInfo();
   }
 }
 
@@ -34,10 +34,10 @@ static void onProgress(size_t transferred, size_t total) {
                  static_cast<unsigned>(total));
     lastPercent = percent;
   }
-  cableLink.setProgress(transferred, total);
+  clientMode.setProgress(transferred, total);
 }
 
-bool CableLink::begin(int clkIn, int dataIn, int clkOut, int dataOut) {
+bool ClientMode::begin(int clkIn, int dataIn, int clkOut, int dataOut) {
   if (!cable_.begin(clkIn, dataIn, clkOut, dataOut)) {
     logger.error("PofoSmartCable begin failed");
     return false;
@@ -47,21 +47,21 @@ bool CableLink::begin(int clkIn, int dataIn, int clkOut, int dataOut) {
   return true;
 }
 
-void CableLink::loop() {
+void ClientMode::loop() {
   cable_.loop();
   processHello();
   processPending();
 }
 
-bool CableLink::online() const {
+bool ClientMode::online() const {
   return cable_.online();
 }
 
-bool CableLink::busy() const {
+bool ClientMode::busy() const {
   return busy_;
 }
 
-bool CableLink::requestTransmit(const String& localPath, const String& pofoPath, bool overwrite) {
+bool ClientMode::requestTransmit(const String& localPath, const String& pofoPath, bool overwrite) {
   if (pendingDirection_ != Direction::NONE) {
     return false;
   }
@@ -76,7 +76,7 @@ bool CableLink::requestTransmit(const String& localPath, const String& pofoPath,
   return true;
 }
 
-bool CableLink::requestReceive(const String& pofoPath, const String& localPath, bool overwrite) {
+bool ClientMode::requestReceive(const String& pofoPath, const String& localPath, bool overwrite) {
   if (pendingDirection_ != Direction::NONE) {
     return false;
   }
@@ -95,7 +95,7 @@ bool CableLink::requestReceive(const String& pofoPath, const String& localPath, 
   return true;
 }
 
-void CableLink::processHello() {
+void ClientMode::processHello() {
   if (!helloPending_ || busy_ || !cable_.online()) {
     return;
   }
@@ -115,7 +115,7 @@ void CableLink::processHello() {
   }
 }
 
-void CableLink::processPending() {
+void ClientMode::processPending() {
   if (pendingDirection_ == Direction::NONE || !cable_.online()) {
     return;
   }
