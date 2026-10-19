@@ -5,8 +5,6 @@
 
 #include <board_config.h>
 
-ClientMode clientMode;
-
 static log4mcu::Logger& logger = log4mcu::Logger::get("ClientMode");
 
 static void onLinkStateChanged(bool isOnline) {
@@ -37,14 +35,9 @@ static void onProgress(size_t transferred, size_t total) {
   clientMode.setProgress(transferred, total);
 }
 
-bool ClientMode::begin(int clkIn, int dataIn, int clkOut, int dataOut) {
-  if (!cable_.begin(clkIn, dataIn, clkOut, dataOut)) {
-    logger.error("PofoSmartCable begin failed");
-    return false;
-  }
+void ClientMode::begin() {
   cable_.setLinkStateCallback(onLinkStateChanged);
   portfolioLink.setProgressCallback(onProgress);
-  return true;
 }
 
 void ClientMode::loop() {

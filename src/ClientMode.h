@@ -6,22 +6,31 @@
 
 #include "PortfolioLink/PortfolioLink.h"
 
-// Owns the PofoSmartCable link and the single pending transfer (upload to or
-// download from the Portfolio) requested by the web API. loop() must be
-// called regularly from the sketch's loop() so a requested transfer runs
-// once the link is online; HTTP handlers only call requestTransmit()/
-// requestReceive() and return immediately, polling busy()/lastError() via
-// /status to report progress.
+// Client-mode application logic (the role the ESP32 always starts in) on
+// top of a PofoSmartCable link owned by the caller (see main.cpp) - the
+// same instance ServerMode uses, since ClientMode and ServerMode never run
+// at the same time and PofoSmartCablePhy's pin/interrupt setup must only
+// happen once. Owns the single pending transfer (upload to or download
+// from the Portfolio) requested by the web API. loop() must be called
+// regularly from the sketch's loop() (only while in client mode) so a
+// requested transfer runs once the link is online; HTTP handlers only call
+// requestTransmit()/requestReceive() and return immediately, polling
+// busy()/lastError() via /status to report progress.
 class ClientMode {
  private:
   // Declared first (even though private) so it's initialized before the
   // public portfolioLink member below, which holds a reference to it -
   // member init order follows declaration order, not access-specifier
   // grouping.
-  PofoSmartCable cable_;
+  PofoSmartCable& cable_;
 
  public:
-  bool begin(int clkIn, int dataIn, int clkOut, int dataOut);
+  explicit ClientMode(PofoSmartCable& cable) : cable_(cable) {}
+
+  // Wires up the link-state/progress callbacks. Does not call
+  // cable.begin() - the caller (main.cpp) owns the PofoSmartCable instance
+  // and begins it once, before either ClientMode or ServerMode is used.
+  void begin();
   void loop();
 
   bool online() const;
@@ -107,4 +116,6 @@ class ClientMode {
   PortfolioLinkHello pftdInfo_;
 };
 
+// Defined in main.cpp, which owns the shared PofoSmartCable instance and
+// constructs clientMode/serverMode on top of it in a known order.
 extern ClientMode clientMode;

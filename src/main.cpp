@@ -21,7 +21,16 @@
 #include "ClientMode.h"
 #include "WebApi/WebApi.h"
 #include "OtaControl.h"
+#include "ServerMode/ServerMode.h"
 #include "ServerModeButton.h"
+
+// Shared PofoSmartCable link, begun once here. ClientMode and ServerMode
+// are both built on top of this single instance (never two instances on
+// the same pins - see ServerMode.h) and never run their loop() at the same
+// time - see SERVERPFTC.md.
+PofoSmartCable cable;
+ClientMode clientMode(cable);
+ServerMode serverMode(cable);
 
 #define OTA_ENABLE_ON_BOOT 1
 
@@ -76,17 +85,23 @@ void setup() {
   otaControlEnable();
 #endif
 
-  if (!clientMode.begin(CABLE_CLK_IN, CABLE_DATA_IN, CABLE_CLK_OUT, CABLE_DATA_OUT)) {
+  if (!cable.begin(CABLE_CLK_IN, CABLE_DATA_IN, CABLE_CLK_OUT, CABLE_DATA_OUT)) {
     logger.error("PofoSmartCable begin failed");
     return;
   }
+  clientMode.begin();
 
   logger.info("Waiting for Smart Cable synchronization");
 }
 
 void loop() {
   webApiLoop();
-  clientMode.loop();
   otaControlLoop();
   serverModeButton.loop();
+
+  if (serverModeButton.active()) {
+    serverMode.loop();
+  } else {
+    clientMode.loop();
+  }
 }
