@@ -21,6 +21,7 @@
 #include "CableLink.h"
 #include "WebApi/WebApi.h"
 #include "OtaControl.h"
+#include "ServerModeButton.h"
 
 #define OTA_ENABLE_ON_BOOT 1
 
@@ -45,6 +46,8 @@ void setup() {
 
   pinMode(LED2, OUTPUT);
   pinMode(LED3, OUTPUT);
+
+  serverModeButton.begin(SERVER_MODE_BUTTON);
 
   logger.info("Opening filesystem");
   if (!LittleFS.begin(true)) {
@@ -85,4 +88,5 @@ void loop() {
   webApiLoop();
   cableLink.loop();
   otaControlLoop();
+  serverModeButton.loop();
 }

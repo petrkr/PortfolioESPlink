@@ -10,6 +10,9 @@
 #define LED2 4
 #define LED3 10
 
+// User button (shared with BOOT/FLASH), active LOW, internal pull-up.
+#define SERVER_MODE_BUTTON 9
+
 inline bool boardBegin() {
     return true;
 }
