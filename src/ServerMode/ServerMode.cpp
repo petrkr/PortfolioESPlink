@@ -30,6 +30,12 @@ void ServerMode::handleRequest(const uint8_t* payload, size_t length) {
     handleHello();
   } else if (length == 1 && payload[0] == PftcOpcode::kGetNetifs) {
     handleGetNetifs();
+  } else if (length == 2 && payload[0] == PftcOpcode::kGetNetif) {
+    handleGetNetif(payload, length);
+  } else if (length >= 1 && payload[0] == PftcOpcode::kSetNetif) {
+    handleSetNetif(payload, length);
+  } else if (length == 2 && payload[0] == PftcOpcode::kGetWifiscan) {
+    handleGetWifiscan(payload, length);
   } else if (length == 2 && payload[0] == PftcOpcode::kGetDashboard) {
     handleDashboard();
   }
