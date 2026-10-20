@@ -54,6 +54,7 @@ void ServerMode::handleGetWifiscan(const uint8_t* payload, size_t length) {
   const uint8_t count = found > 0
       ? static_cast<uint8_t>(found > kMaxResults ? kMaxResults : found)
       : 0;
+  serverModeLogger().debugf("Found %d network(s), sending %u", found, count);
 
   // 3-byte header + up to 10 entries, each up to 1 + 32 + 1 + 1 bytes.
   uint8_t response[3 + kMaxResults * (1 + 32 + 1 + 1)];
@@ -66,12 +67,17 @@ void ServerMode::handleGetWifiscan(const uint8_t* payload, size_t length) {
     const String ssid = WiFi.SSID(index);
     const uint8_t ssidLength = static_cast<uint8_t>(
         ssid.length() > 32 ? 32 : ssid.length());
+    const int8_t rssi = static_cast<int8_t>(WiFi.RSSI(index));
+    const uint8_t security = mapSecurity(WiFi.encryptionType(index));
+
+    serverModeLogger().debugf("  %u: SSID=\"%s\" RSSI=%d security=0x%02X", index,
+                               ssid.c_str(), rssi, security);
 
     response[offset++] = ssidLength;
     memcpy(response + offset, ssid.c_str(), ssidLength);
     offset += ssidLength;
-    response[offset++] = static_cast<uint8_t>(WiFi.RSSI(index));
-    response[offset++] = mapSecurity(WiFi.encryptionType(index));
+    response[offset++] = static_cast<uint8_t>(rssi);
+    response[offset++] = security;
   }
 
   WiFi.scanDelete();
